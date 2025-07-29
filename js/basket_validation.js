@@ -1,4 +1,4 @@
-function validate_basket_helper(basket_validation_input) {
+function validate_basket_helper(basket_validation_input, discount_calculation = false) {
     
     const { basket, coupons } = basket_validation_input;
     if(!basket || !coupons) {
@@ -8,39 +8,16 @@ function validate_basket_helper(basket_validation_input) {
         };
     }
 
-    // Remove unnecessary attributes
-    let valid_attributes = [
-        'primary_purchase_save_value',
-        'primary_purchase_requirements',
-        'primary_purchase_req_code',
-        'primary_purchase_gtins',
-        'primary_purchase_eans',
-        'additional_purchase_rules_code',
-        'second_purchase_requirements',
-        'second_purchase_gs1_company_prefix',
-        'second_purchase_req_code',
-        'second_purchase_gtins',
-        'second_purchase_eans',
-        'third_purchase_requirements',
-        'third_purchase_gs1_company_prefix',
-        'third_purchase_req_code',
-        'third_purchase_gtins',
-        'third_purchase_eans',
-        'save_value_code',
-        'applies_to_which_item',
-        'store_coupon'
-    ]
-
-    for ( let i=0; i<input.coupons.length; i++ ) {
-        for ( let key in input.coupons[i] ) {
-            if ( !valid_attributes.includes(key) ) {
-                delete input.coupons[i][key];
-            }
-        }
+    // Get individual coupons discount in cents
+    if ( !discount_calculation ) {
+        coupons.forEach(coupon => {
+            let validateCouponWithBasket = validate_basket_helper({basket, coupons: [coupon]}, true);
+            coupon.discount_in_cents = validateCouponWithBasket.basket_validation_output.discount_in_cents;
+        });
     }
-    // End
 
-    console.log(basket_validation_input, null, 2);
+    // Sort the coupons with discount in cents in desc order
+    coupons.sort((a, b) => b.discount_in_cents - a.discount_in_cents);
 
     const basket_validation_output = {
         discount_in_cents: 0,
@@ -48,6 +25,7 @@ function validate_basket_helper(basket_validation_input) {
     };
 
     let new_basket = mergeBasketItems(basket);
+    let not_all_coupons_consumed = false;
     let index = 0;
 
     // for each coupon, check if basket meets requirements
@@ -88,7 +66,9 @@ function validate_basket_helper(basket_validation_input) {
             if(discount_in_cents)
                 basket_validation_output.discount_in_cents += discount_in_cents;
 
-            
+            if(new_basket_units === 0 && index < coupons.length) {
+                not_all_coupons_consumed = true;
+            }
         }
     });
 
