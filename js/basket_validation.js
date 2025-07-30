@@ -73,7 +73,10 @@ function validate_basket_helper(basket_validation_input, discount_calculation = 
     });
 
     
-    return {basket_validation_output};
+    return {
+        discount_in_cents: basket_validation_output.discount_in_cents,
+        applied_coupons: basket_validation_output.applied_coupons
+    };
 }
 
 function get_discount_in_cents(coupon, basket_items, has_only_primary_purchase, new_basket_total_price, consumed_basket) {
