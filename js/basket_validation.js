@@ -12,7 +12,7 @@ function validate_basket_helper(basket_validation_input, discount_calculation = 
     if ( !discount_calculation ) {
         coupons.forEach(coupon => {
             let validateCouponWithBasket = validate_basket_helper({basket, coupons: [coupon]}, true);
-            coupon.discount_in_cents = validateCouponWithBasket.basket_validation_output.discount_in_cents;
+            coupon.discount_in_cents = validateCouponWithBasket.discount_in_cents;
         });
     }
 
