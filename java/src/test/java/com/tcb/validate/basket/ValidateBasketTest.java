@@ -18,7 +18,7 @@ public class ValidateBasketTest {
 
 	@Test
 	@DisplayName("Single Input JSON Validation Test")
-	void validateSingleInputJson() {
+	void calculateDiscount() {
 
 		try {
 			// ✅ Read from JSON file
