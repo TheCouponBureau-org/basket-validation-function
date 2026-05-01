@@ -71,14 +71,6 @@ Defines rules for coupon eligibility, including:
 * Validate primary conditions
 * Validate secondary and/or third conditions
 
-### 🔍 Selection Strategy
-
-When multiple combinations are valid:
-
-* Evaluate all combinations
-* Compare total basket value
-* Select the best-performing combination
-
 ### Step 5: Basket Reduction
 
 * Consume required quantities only
