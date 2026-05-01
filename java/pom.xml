@@ -1,19 +1,36 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://www.w3.org/maven-v4_0_0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.tcb.validate.basket</groupId>
+
+  <groupId>org.thecouponbureau.validate.basket</groupId>
   <artifactId>basket-validator</artifactId>
-  <packaging>jar</packaging>
   <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
 
   <name>basket-validator</name>
-  <url>http://maven.apache.org</url>
+
+  <!-- ===================================================== -->
+  <!-- 🔥 Lock Log4j versions (VERY IMPORTANT) -->
+  <!-- ===================================================== -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-bom</artifactId>
+        <version>2.23.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
 
+    <!-- ===================================================== -->
     <!-- ✅ JUnit 5 -->
+    <!-- ===================================================== -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
@@ -21,7 +38,9 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- ✅ JSON Assert (for comparing expected vs actual) -->
+    <!-- ===================================================== -->
+    <!-- ✅ JSON Assert -->
+    <!-- ===================================================== -->
     <dependency>
       <groupId>org.skyscreamer</groupId>
       <artifactId>jsonassert</artifactId>
@@ -29,18 +48,41 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- ===================================================== -->
     <!-- ✅ Jackson -->
+    <!-- ===================================================== -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>2.17.0</version>
     </dependency>
 
-    <!-- ✅ Apache POI (Excel) -->
+    <!-- ===================================================== -->
+    <!-- ✅ Apache POI (Excel support) -->
+    <!-- ===================================================== -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi</artifactId>
+      <version>5.2.5</version>
+    </dependency>
+
     <dependency>
       <groupId>org.apache.poi</groupId>
       <artifactId>poi-ooxml</artifactId>
       <version>5.2.5</version>
+    </dependency>
+
+    <!-- ===================================================== -->
+    <!-- ✅ Log4j (FIXES YOUR ERROR) -->
+    <!-- ===================================================== -->
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
     </dependency>
 
   </dependencies>
@@ -48,11 +90,16 @@
   <build>
     <plugins>
 
+      <!-- ===================================================== -->
       <!-- ✅ JUnit 5 Runner -->
+      <!-- ===================================================== -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.0.0</version>
+        <version>3.2.5</version>
+        <configuration>
+          <useModulePath>false</useModulePath>
+        </configuration>
       </plugin>
 
     </plugins>
