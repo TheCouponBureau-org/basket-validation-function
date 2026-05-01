@@ -71,15 +71,6 @@ Defines rules for coupon eligibility, including:
 * Validate primary conditions
 * Validate secondary and/or third conditions
 
-### Step 4: Combination Selection
-
-* Build combinations:
-
-       * Primary + Secondary
-       * Primary + Third
-* Evaluate all valid combinations
-* Select the optimal combination based on basket value
-
 ### 🔍 Selection Strategy
 
 When multiple combinations are valid:
