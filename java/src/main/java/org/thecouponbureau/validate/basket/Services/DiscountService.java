@@ -1,214 +1,276 @@
-package org.thecouponbureau.validate.basket.Services;
+package com.tcb.validate.basket.Services;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import org.thecouponbureau.validate.basket.helper.BasketHelper;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
+import com.tcb.validate.basket.helper.BasketHelper;
+import com.tcb.validate.basket.model.basketValidationResults.BasketItem;
+import com.tcb.validate.basket.model.basketValidationResults.Coupon;
 
 public class DiscountService {
 
-    // =====================================================
-    // Main method to calculate discount for a given coupon
-    // =====================================================
-    public static long getDiscountInCents(
-            Coupon coupon,
-            List<BasketItem> basketItems,
-            boolean hasOnlyPrimaryPurchase,
-            long newBasketTotalPrice,
-            List<BasketItem> consumedBasket) {
+	// =====================================================
+	// Main method to calculate discount for a given coupon
+	// =====================================================
+	public static long getDiscountInCents(
+			Coupon coupon,
+			List<BasketItem> basketItems,
+			boolean hasOnlyPrimaryPurchase,
+			long newBasketTotalPrice,
+			List<BasketItem> consumedBasket) {
 
-        // Determine the type of discount (default = 0)
-        Integer saveValueCode = coupon.purchaseRequirement.saveValueCode != null
-                ? coupon.purchaseRequirement.saveValueCode
-                : 0;
-        
-        // Identify which basket items the coupon applies to
-        Integer appliesToWhichItem = coupon.purchaseRequirement.appliesToWhichItem;
-        
-        // If only primary purchase exists and no target specified → default to primary
-        if (hasOnlyPrimaryPurchase && appliesToWhichItem == null) {
-            appliesToWhichItem = 0;
-        }
+		// Determine the type of discount (default = 0)
+		Integer saveValueCode = coupon.purchaseRequirement.saveValueCode != null
+				? coupon.purchaseRequirement.saveValueCode
+						: 0;
 
-        long discountInCents = 0;
+		// Identify which basket items the coupon applies to
+		Integer appliesToWhichItem = coupon.purchaseRequirement.appliesToWhichItem;
 
-        // =====================================================
-        // CASE 0 → Flat discount amount
-        // =====================================================
-        if (saveValueCode == 0) {
+		// If only primary purchase exists and no target specified → default to primary
+		if (hasOnlyPrimaryPurchase && appliesToWhichItem == null) {
+			appliesToWhichItem = 0;
+		}
 
-            // Get flat discount value
-            discountInCents = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
-                    ? coupon.purchaseRequirement.primaryPurchaseSaveValue
-                    : 0;
+		long discountInCents = 0;
 
-            // Apply discount only if applicable items are valid
-            if (appliesToWhichItem != null || coupon.purchaseRequirement.appliesToWhichItem == null) {
+		// =====================================================
+		// CASE 0 → Flat discount amount
+		// =====================================================
+		if (saveValueCode == 0) {
 
-                // If total basket value is less than discount → invalid coupon
-                if (newBasketTotalPrice < discountInCents) {
-                    return -1;
-                }
+			// Get flat discount value
+			discountInCents = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
+					? coupon.purchaseRequirement.primaryPurchaseSaveValue
+							: 0;
 
-                // Get items eligible for discount
-                List<BasketItem> newBasketItems = applicableBasketItems(basketItems, appliesToWhichItem);
+			// Apply discount only if applicable items are valid
+			if (appliesToWhichItem != null || coupon.purchaseRequirement.appliesToWhichItem == null) {
 
-                // Filter items if consumed basket exists
-                if (consumedBasket != null && !consumedBasket.isEmpty()) {
-                	List<BasketItem> filteredItems = new ArrayList<>();
-                	
-                	// Iterate through eligible basket items
-                	for (BasketItem newItem : newBasketItems) {
-                	    boolean found = false;
+				// If total basket value is less than discount → invalid coupon
+				if (newBasketTotalPrice < discountInCents) {
+					return -1;
+				}
 
-                	    for (BasketItem consumedItem : consumedBasket) {
-                	        if (Objects.equals(consumedItem.productCode, newItem.productCode)) {
-                	            found = true;
-                	            break;
-                	        }
-                	    }
-                	 // Retain only items that participated in coupon consumption
-                	    if (found) {
-                	        filteredItems.add(newItem);
-                	    }
-                	}
-                	// Replace with filtered list aligned to consumed items
-                	newBasketItems = filteredItems;
-                }
+				// Get items eligible for discount
+				List<BasketItem> newBasketItems = applicableBasketItems(basketItems, appliesToWhichItem);
 
-                // Calculate total price of qualifying items
-                long qualifyingPurchasePrice = 0;
-                for (BasketItem item : newBasketItems) {
-                    qualifyingPurchasePrice += BasketHelper.toCents(item.price) * item.quantity;
-                }
+				// Filter items if consumed basket exists
+				if (consumedBasket != null && !consumedBasket.isEmpty()) {
+					List<BasketItem> filteredItems = new ArrayList<>();
 
-                // If qualifying price is less than discount → no discount
-                if (qualifyingPurchasePrice < discountInCents) {
-                    discountInCents = 0;
-                }
+					// Iterate through eligible basket items
+					for (BasketItem newItem : newBasketItems) {
+						boolean found = false;
 
-                // Validate against consumed basket price
-                if (consumedBasket != null && !consumedBasket.isEmpty()) {
-                    long consumedBasketPrice = 0;
-                    for (BasketItem item : consumedBasket) {
-                        consumedBasketPrice += BasketHelper.toCents(item.price) * item.quantity;
-                    }
+						for (BasketItem consumedItem : consumedBasket) {
+							if (Objects.equals(consumedItem.productCode, newItem.productCode)) {
+								found = true;
+								break;
+							}
+						}
+						// Retain only items that participated in coupon consumption
+						if (found) {
+							filteredItems.add(newItem);
+						}
+					}
+					// Replace with filtered list aligned to consumed items
+					newBasketItems = filteredItems;
+				}
 
-                    if (consumedBasketPrice < discountInCents) {
-                        discountInCents = 0;
-                    }
-                }
-            }
+				// Calculate total price of qualifying items
+				long qualifyingPurchasePrice = 0;
+				for (BasketItem item : newBasketItems) {
+					qualifyingPurchasePrice += BasketHelper.toCents(item.price) * item.quantity;
+				}
 
-        // =====================================================
-        // CASE 1 → Discount equals item price (capped)
-        // =====================================================
-        } else if (saveValueCode == 1) {
+				// If qualifying price is less than discount → no discount
+				if (qualifyingPurchasePrice < discountInCents) {
+					discountInCents = 0;
+				}
 
-            long maxAmountToPurchase = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
-                    ? coupon.purchaseRequirement.primaryPurchaseSaveValue
-                    : 0;
-            
+				// Validate against consumed basket price
+				if (consumedBasket != null && !consumedBasket.isEmpty()) {
+					long consumedBasketPrice = 0;
+					for (BasketItem item : consumedBasket) {
+						consumedBasketPrice += BasketHelper.toCents(item.price) * item.quantity;
+					}
 
-            // Get applicable items
-            List<BasketItem> newBasketItems = applicableBasketItems(basketItems, appliesToWhichItem);
-            
-            
-            // Take price of first applicable item as discount
-            if (!newBasketItems.isEmpty()) {
-                discountInCents = BasketHelper.toCents(newBasketItems.get(0).price);
-            }
+					if (consumedBasketPrice < discountInCents) {
+						discountInCents = 0;
+					}
+				}
+			}
 
-            // Apply maximum cap if defined
-            if (maxAmountToPurchase != 0 && discountInCents > maxAmountToPurchase) {
-                discountInCents = maxAmountToPurchase;
-            }
+			// =====================================================
+			// CASE 1 → Discount equals item price (capped)
+			// =====================================================
+		} else if (saveValueCode == 1) {
 
-        // =====================================================
-        // CASE 2 → Free items (based on quantity)
-        // =====================================================
-        } else if (saveValueCode == 2) {
+			long maxAmountToPurchase = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
+					? coupon.purchaseRequirement.primaryPurchaseSaveValue
+							: 0;
 
-            long freePurchaseItemUnits = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
-                    ? coupon.purchaseRequirement.primaryPurchaseSaveValue
-                    : 0;
 
-            int index = 0;
+			// Get applicable items
+			List<BasketItem> newBasketItems = applicableBasketItems(basketItems, appliesToWhichItem);
 
-            // Iterate through basket items
-            for (BasketItem item : basketItems) {
 
-                // Filter based on purchase type
-                if (Objects.equals(appliesToWhichItem, 0) && item.purchaseType != null) {
-                    continue;
-                }
-                if (Objects.equals(appliesToWhichItem, 1) && !"second_purchase".equals(item.purchaseType)) {
-                    continue;
-                }
-                if (Objects.equals(appliesToWhichItem, 2) && !"third_purchase".equals(item.purchaseType)) {
-                    continue;
-                }
+			// Take price of first applicable item as discount
+			if (!newBasketItems.isEmpty()) {
+				discountInCents = BasketHelper.toCents(newBasketItems.get(0).price);
+			}
 
-                // Add free item discount based on quantity
-                for (int i = 0; i < item.quantity; i++) {
-                    if (index < freePurchaseItemUnits) {
-                        discountInCents += BasketHelper.toCents(item.price);
-                        index++;
-                    }
-                }
-            }
+			// Apply maximum cap if defined
+			if (maxAmountToPurchase != 0 && discountInCents > maxAmountToPurchase) {
+				discountInCents = maxAmountToPurchase;
+			}
 
-        // =====================================================
-        // CASE 6 → Direct discount value (no validation)
-        // =====================================================
-        } else if (saveValueCode == 6) {
+			// =====================================================
+			// CASE 2 → Free items (based on quantity)
+			// =====================================================
+		} else if (saveValueCode == 2) {
 
-            discountInCents = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
-                    ? coupon.purchaseRequirement.primaryPurchaseSaveValue
-                    : 0;
-        }
+			long freePurchaseItemUnits = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
+					? coupon.purchaseRequirement.primaryPurchaseSaveValue
+							: 0;
 
-        return discountInCents;
-    }
+			int index = 0;
 
-    // =====================================================
-    // Helper method: Filters basket items based on purchase type
-    // =====================================================
-    public static List<BasketItem> applicableBasketItems(
-            List<BasketItem> basketItems,
-            Integer appliesToWhichItem) {
+			// Iterate through basket items
+			for (BasketItem item : basketItems) {
 
-        List<BasketItem> result = new ArrayList<>();
+				// Filter based on purchase type
+				if (Objects.equals(appliesToWhichItem, 0) && item.purchaseType != null) {
+					continue;
+				}
+				if (Objects.equals(appliesToWhichItem, 1) && !"second_purchase".equals(item.purchaseType)) {
+					continue;
+				}
+				if (Objects.equals(appliesToWhichItem, 2) && !"third_purchase".equals(item.purchaseType)) {
+					continue;
+				}
 
-        // If null → apply to all items
-        if (appliesToWhichItem == null) {
-            result.addAll(basketItems);
+				// Add free item discount based on quantity
+				for (int i = 0; i < item.quantity; i++) {
+					if (index < freePurchaseItemUnits) {
+						discountInCents += BasketHelper.toCents(item.price);
+						index++;
+					}
+				}
+			}
 
-        // Primary purchase items
-        } else if (appliesToWhichItem == 0) {
-            for (BasketItem item : basketItems) {
-                if (item.purchaseType == null)
-                    result.add(item);
-            }
 
-        // Second purchase items
-        } else if (appliesToWhichItem == 1) {
-            for (BasketItem item : basketItems) {
-                if ("second_purchase".equals(item.purchaseType))
-                    result.add(item);
-            }
+		}// =====================================================
+		// CASE 7 → Progressive Offer (Save UP TO)
+		// =====================================================
+		else if (saveValueCode == 7) {
 
-        // Third purchase items
-        } else if (appliesToWhichItem == 2) {
-            for (BasketItem item : basketItems) {
-                if ("third_purchase".equals(item.purchaseType))
-                    result.add(item);
-            }
-        }
+			// Maximum allowed discount from coupon
+			long maxDiscount =
+					coupon.purchaseRequirement.primaryPurchaseSaveValue != null
+					? coupon.purchaseRequirement.primaryPurchaseSaveValue
+							: 0;
 
-        return result;
-    }
+			// Get applicable qualifying items
+			List<BasketItem> newBasketItems =
+					applicableBasketItems(basketItems, appliesToWhichItem);
+
+			// Filter only consumed basket items if present
+			if (consumedBasket != null && !consumedBasket.isEmpty()) {
+
+				List<BasketItem> filteredItems = new ArrayList<>();
+
+				for (BasketItem newItem : newBasketItems) {
+
+					boolean found = false;
+
+					for (BasketItem consumedItem : consumedBasket) {
+
+						if (Objects.equals(
+								consumedItem.productCode,
+								newItem.productCode
+								)) {
+							found = true;
+							break;
+						}
+					}
+
+					// Retain only consumed qualifying items
+					if (found) {
+						filteredItems.add(newItem);
+					}
+				}
+
+				newBasketItems = filteredItems;
+			}
+
+			// Calculate total qualifying purchase amount
+			long qualifyingPurchasePrice = 0;
+
+			for (BasketItem item : newBasketItems) {
+
+				qualifyingPurchasePrice +=
+						BasketHelper.toCents(item.price) * item.quantity;
+			}
+
+			// Progressive discount logic
+			// discount = MIN(qualifying total, save value)
+			discountInCents = Math.min(
+					qualifyingPurchasePrice,
+					maxDiscount
+					);
+		}
+		// =====================================================
+		// CASE 6 → Direct discount value (no validation)
+		// =====================================================
+
+		else if (saveValueCode == 6) {
+
+			discountInCents = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
+					? coupon.purchaseRequirement.primaryPurchaseSaveValue
+							: 0;
+		}
+
+		return discountInCents;
+	}
+
+	// =====================================================
+	// Helper method: Filters basket items based on purchase type
+	// =====================================================
+	public static List<BasketItem> applicableBasketItems(
+			List<BasketItem> basketItems,
+			Integer appliesToWhichItem) {
+
+		List<BasketItem> result = new ArrayList<>();
+
+		// If null → apply to all items
+		if (appliesToWhichItem == null) {
+			result.addAll(basketItems);
+
+			// Primary purchase items
+		} else if (appliesToWhichItem == 0) {
+			for (BasketItem item : basketItems) {
+				if (item.purchaseType == null)
+					result.add(item);
+			}
+
+			// Second purchase items
+		} else if (appliesToWhichItem == 1) {
+			for (BasketItem item : basketItems) {
+				if ("second_purchase".equals(item.purchaseType))
+					result.add(item);
+			}
+
+			// Third purchase items
+		} else if (appliesToWhichItem == 2) {
+			for (BasketItem item : basketItems) {
+				if ("third_purchase".equals(item.purchaseType))
+					result.add(item);
+			}
+		}
+
+		return result;
+	}
 }
