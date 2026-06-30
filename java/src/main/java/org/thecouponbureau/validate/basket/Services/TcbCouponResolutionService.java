@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Purchas
 
 public class TcbCouponResolutionService {
 
+    private static final int COUPON_GS1_LENGTH = 34;
     private static final int REDEEM_BATCH_SIZE = 15;
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -37,11 +39,11 @@ public class TcbCouponResolutionService {
             return coupons;
         }
 
-        List<Coupon> resolvedCoupons = new ArrayList<>(coupons);
+        Map<Integer, List<ResolvedCouponItem>> resolvedCouponsByOriginalIndex = new HashMap<>();
         List<CouponBucket> buckets = buildBuckets(coupons);
 
         if (buckets.isEmpty()) {
-            return resolvedCoupons;
+            return new ArrayList<>(coupons);
         }
 
         List<CompletableFuture<BucketResolution>> futures = new ArrayList<>();
@@ -55,17 +57,39 @@ public class TcbCouponResolutionService {
         for (CompletableFuture<BucketResolution> future : futures) {
             BucketResolution bucketResolution = future.join();
 
-            for (Map.Entry<Integer, Coupon> entry : bucketResolution.resolvedCouponsByIndex.entrySet()) {
-                resolvedCoupons.set(entry.getKey(), entry.getValue());
+            for (Map.Entry<Integer, List<ResolvedCouponItem>> entry
+                    : bucketResolution.resolvedCouponsByOriginalIndex.entrySet()) {
+
+                resolvedCouponsByOriginalIndex
+                        .computeIfAbsent(entry.getKey(), unused -> new ArrayList<>())
+                        .addAll(entry.getValue());
             }
         }
 
-        return resolvedCoupons;
+        List<Coupon> flattenedCoupons = new ArrayList<>();
+
+        for (int index = 0; index < coupons.size(); index++) {
+            List<ResolvedCouponItem> resolvedItems =
+                    resolvedCouponsByOriginalIndex.get(index);
+
+            if (resolvedItems == null || resolvedItems.isEmpty()) {
+                flattenedCoupons.add(coupons.get(index));
+                continue;
+            }
+
+            resolvedItems.sort(Comparator.comparingInt(item -> item.sequence));
+
+            for (ResolvedCouponItem item : resolvedItems) {
+                flattenedCoupons.add(item.coupon);
+            }
+        }
+
+        return flattenedCoupons;
     }
 
     private static List<CouponBucket> buildBuckets(List<Coupon> coupons) {
         List<CouponBucket> buckets = new ArrayList<>();
-        List<CouponRef> groupedCoupons = new ArrayList<>();
+        List<RequestedCouponGs1> groupedCoupons = new ArrayList<>();
 
         for (int index = 0; index < coupons.size(); index++) {
             Coupon coupon = coupons.get(index);
@@ -75,21 +99,48 @@ public class TcbCouponResolutionService {
             }
 
             CouponRef ref = new CouponRef(index, coupon);
+            List<String> requestedGs1s = expandRequestedGs1s(coupon.gs1);
 
             if (coupon.gs1.length() == 16) {
-                buckets.add(new CouponBucket(List.of(ref), true));
+                buckets.add(new CouponBucket(List.of(ref), new ArrayList<>(), true));
                 continue;
             }
 
-            groupedCoupons.add(ref);
+            for (int sequence = 0; sequence < requestedGs1s.size(); sequence++) {
+                groupedCoupons.add(new RequestedCouponGs1(
+                        ref,
+                        requestedGs1s.get(sequence),
+                        sequence));
+            }
         }
 
         for (int start = 0; start < groupedCoupons.size(); start += REDEEM_BATCH_SIZE) {
             int end = Math.min(start + REDEEM_BATCH_SIZE, groupedCoupons.size());
-            buckets.add(new CouponBucket(new ArrayList<>(groupedCoupons.subList(start, end)), false));
+            buckets.add(new CouponBucket(
+                    new ArrayList<>(),
+                    new ArrayList<>(groupedCoupons.subList(start, end)),
+                    false));
         }
 
         return buckets;
+    }
+
+    private static List<String> expandRequestedGs1s(String gs1) {
+        List<String> expandedGs1s = new ArrayList<>();
+
+        if (isBlank(gs1)) {
+            return expandedGs1s;
+        }
+
+        if (gs1.length() > 16 && gs1.length() % COUPON_GS1_LENGTH == 0) {
+            for (int index = 0; index < gs1.length(); index += COUPON_GS1_LENGTH) {
+                expandedGs1s.add(gs1.substring(index, index + COUPON_GS1_LENGTH));
+            }
+            return expandedGs1s;
+        }
+
+        expandedGs1s.add(gs1);
+        return expandedGs1s;
     }
 
     private static boolean needsResolution(Coupon coupon) {
@@ -108,8 +159,12 @@ public class TcbCouponResolutionService {
         try {
             RedeemRequest payload = new RedeemRequest();
 
-            for (CouponRef ref : bucket.couponRefs) {
-                payload.gs1s.add(ref.coupon.gs1);
+            if (bucket.singleCouponBucket) {
+                payload.gs1s.add(bucket.couponRefs.get(0).coupon.gs1);
+            } else {
+                for (RequestedCouponGs1 requestedCouponGs1 : bucket.requestedCouponGs1s) {
+                    payload.gs1s.add(requestedCouponGs1.gs1);
+                }
             }
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -152,12 +207,21 @@ public class TcbCouponResolutionService {
                         "TCB redeem response did not contain master_offer_files.");
             }
 
-            Map<Integer, Coupon> resolvedByIndex = new HashMap<>();
+            Map<Integer, List<ResolvedCouponItem>> resolvedByIndex = new HashMap<>();
 
             if (bucket.singleCouponBucket) {
                 CouponRef ref = bucket.couponRefs.get(0);
-                RedeemedCoupon redeemedCoupon = redeemResponse.newlyRedeemed.get(0);
-                resolvedByIndex.put(ref.index, toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles));
+                List<ResolvedCouponItem> resolvedCoupons = new ArrayList<>();
+
+                for (int sequence = 0; sequence < redeemResponse.newlyRedeemed.size(); sequence++) {
+                    resolvedCoupons.add(new ResolvedCouponItem(
+                            sequence,
+                            toResolvedCoupon(
+                                    redeemResponse.newlyRedeemed.get(sequence),
+                                    redeemResponse.masterOfferFiles)));
+                }
+
+                resolvedByIndex.put(ref.index, resolvedCoupons);
                 return new BucketResolution(resolvedByIndex);
             }
 
@@ -167,17 +231,20 @@ public class TcbCouponResolutionService {
                 redeemedByGs1.put(redeemedCoupon.gs1, redeemedCoupon);
             }
 
-            for (CouponRef ref : bucket.couponRefs) {
-                RedeemedCoupon redeemedCoupon = redeemedByGs1.get(ref.coupon.gs1);
+            for (RequestedCouponGs1 requestedCouponGs1 : bucket.requestedCouponGs1s) {
+                RedeemedCoupon redeemedCoupon = redeemedByGs1.get(requestedCouponGs1.gs1);
 
                 if (redeemedCoupon == null) {
                     throw new IllegalStateException(
-                            "TCB redeem response did not contain resolved data for gs1 " + ref.coupon.gs1);
+                            "TCB redeem response did not contain resolved data for gs1 "
+                                    + requestedCouponGs1.gs1);
                 }
 
-                resolvedByIndex.put(
-                        ref.index,
-                        toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles));
+                resolvedByIndex
+                        .computeIfAbsent(requestedCouponGs1.couponRef.index, unused -> new ArrayList<>())
+                        .add(new ResolvedCouponItem(
+                                requestedCouponGs1.sequence,
+                                toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles)));
             }
 
             return new BucketResolution(resolvedByIndex);
@@ -242,19 +309,46 @@ public class TcbCouponResolutionService {
 
     private static class CouponBucket {
         private final List<CouponRef> couponRefs;
+        private final List<RequestedCouponGs1> requestedCouponGs1s;
         private final boolean singleCouponBucket;
 
-        private CouponBucket(List<CouponRef> couponRefs, boolean singleCouponBucket) {
+        private CouponBucket(
+                List<CouponRef> couponRefs,
+                List<RequestedCouponGs1> requestedCouponGs1s,
+                boolean singleCouponBucket) {
             this.couponRefs = couponRefs;
+            this.requestedCouponGs1s = requestedCouponGs1s;
             this.singleCouponBucket = singleCouponBucket;
         }
     }
 
     private static class BucketResolution {
-        private final Map<Integer, Coupon> resolvedCouponsByIndex;
+        private final Map<Integer, List<ResolvedCouponItem>> resolvedCouponsByOriginalIndex;
 
-        private BucketResolution(Map<Integer, Coupon> resolvedCouponsByIndex) {
-            this.resolvedCouponsByIndex = resolvedCouponsByIndex;
+        private BucketResolution(Map<Integer, List<ResolvedCouponItem>> resolvedCouponsByOriginalIndex) {
+            this.resolvedCouponsByOriginalIndex = resolvedCouponsByOriginalIndex;
+        }
+    }
+
+    private static class RequestedCouponGs1 {
+        private final CouponRef couponRef;
+        private final String gs1;
+        private final int sequence;
+
+        private RequestedCouponGs1(CouponRef couponRef, String gs1, int sequence) {
+            this.couponRef = couponRef;
+            this.gs1 = gs1;
+            this.sequence = sequence;
+        }
+    }
+
+    private static class ResolvedCouponItem {
+        private final int sequence;
+        private final Coupon coupon;
+
+        private ResolvedCouponItem(int sequence, Coupon coupon) {
+            this.sequence = sequence;
+            this.coupon = coupon;
         }
     }
 
