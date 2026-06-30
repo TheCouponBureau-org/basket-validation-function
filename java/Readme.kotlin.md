@@ -54,6 +54,7 @@ Main classes:
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon`
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement`
 - `org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService`
+- `org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService`
 
 Example:
 
@@ -328,6 +329,8 @@ This method:
 - calls the same `retailer/redeem` API
 - returns the raw JSON response body from TCB
 - does not send the `pre_process` field
+- generates one `client_txn_id` per redemption request
+- reuses that same `client_txn_id` across retries for idempotency
 
 Kotlin example:
 
@@ -358,3 +361,41 @@ target/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
 That fat JAR already includes dependencies.
+
+## 10. Rollback redeemed coupons in TCB
+
+If your retailer needs to reverse previously redeemed coupons, use:
+
+- `TcbCouponRollbackService.rollbackCoupons(...)`
+
+This method:
+
+- accepts a list of GS1 coupon codes
+- gets or reuses the cached TCB access token
+- calls `DELETE /retailer/rollback/{gs1}`
+- calls each rollback in parallel, one API request per GS1
+- returns a `Map<String, String>` where:
+  - key = GS1
+  - value = raw JSON response from TCB
+
+Kotlin example:
+
+```kotlin
+import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
+
+fun main() {
+    val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+        "https://api.try.thecouponbureau.org/",
+        "8053fd0f80cf3778659def1359cac218",
+        "eb42623aa2675e50f15da4f6d4aa0ad6",
+        listOf(
+            "8112109988459000269133321426026193",
+            "8112109988459000269133587761214614"
+        )
+    )
+
+    rollbackResponses.forEach { (gs1, responseJson) ->
+        println("$gs1 -> $responseJson")
+    }
+}
+```

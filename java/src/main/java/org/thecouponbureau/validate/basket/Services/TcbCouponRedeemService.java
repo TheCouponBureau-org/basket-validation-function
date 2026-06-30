@@ -1,12 +1,11 @@
 package org.thecouponbureau.validate.basket.Services;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class TcbCouponRedeemService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
 
     public static String redeemCoupons(
             String baseUrl,
@@ -41,30 +39,20 @@ public class TcbCouponRedeemService {
         try {
             RedeemRequest payload = new RedeemRequest();
             payload.gs1s = new ArrayList<>(gs1s);
+            payload.clientTxnId = UUID.randomUUID().toString();
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(normalizeBaseUrl(baseUrl) + "/retailer/redeem"))
-                    .header("Content-Type", "application/json")
-                    .header("x-api-key", accessKey)
-                    .header("x-access-token", accessToken)
-                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(payload)))
-                    .build();
+            HttpRequest request = TcbApiService.buildPostJsonRequest(
+                    normalizeBaseUrl(baseUrl) + "/retailer/redeem",
+                    accessKey,
+                    accessToken,
+                    MAPPER.writeValueAsString(payload));
 
             HttpResponse<String> response =
-                    HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException(
-                        "TCB retailer/redeem request failed with HTTP " + response.statusCode());
-            }
+                    TcbApiService.sendWithRetry(request, "retailer/redeem");
 
             return response.body();
 
-        } catch (IOException | InterruptedException exception) {
-            if (exception instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-
+        } catch (IOException exception) {
             throw new IllegalStateException("Unable to redeem coupons through TCB retailer/redeem.", exception);
         }
     }

@@ -2,7 +2,6 @@ package org.thecouponbureau.validate.basket.Services;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +22,6 @@ public class TcbTokenService {
 
     private static final Duration TOKEN_REUSE_WINDOW = Duration.ofHours(23);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final Path CACHE_FILE = Paths.get(
             System.getProperty("java.io.tmpdir"),
             ".tcb-basket-validator",
@@ -88,20 +86,14 @@ public class TcbTokenService {
             payload.accessKey = accessKey;
             payload.secretKey = secretKey;
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(normalizeBaseUrl(baseUrl) + "/access_token"))
-                    .header("Content-Type", "application/json")
-                    .header("x-api-key", accessKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(payload)))
-                    .build();
+            HttpRequest request = TcbApiService.buildPostJsonRequest(
+                    normalizeBaseUrl(baseUrl) + "/access_token",
+                    accessKey,
+                    null,
+                    MAPPER.writeValueAsString(payload));
 
             HttpResponse<String> response =
-                    HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException(
-                        "TCB access_token request failed with HTTP " + response.statusCode());
-            }
+                    TcbApiService.sendWithRetry(request, "access_token");
 
             TokenResponse tokenResponse =
                     MAPPER.readValue(response.body(), TokenResponse.class);
@@ -113,11 +105,7 @@ public class TcbTokenService {
 
             return tokenResponse.accessToken;
 
-        } catch (IOException | InterruptedException exception) {
-            if (exception instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-
+        } catch (IOException exception) {
             throw new IllegalStateException("Unable to fetch TCB access token.", exception);
         }
     }

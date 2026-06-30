@@ -1,8 +1,6 @@
 package org.thecouponbureau.validate.basket.Services;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
@@ -27,7 +25,6 @@ public class TcbCouponResolutionService {
     private static final int REDEEM_BATCH_SIZE = 15;
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
 
     public static List<Coupon> resolveCoupons(
             String baseUrl,
@@ -177,16 +174,14 @@ public class TcbCouponResolutionService {
                 }
             }
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(normalizeBaseUrl(baseUrl) + "/retailer/redeem"))
-                    .header("Content-Type", "application/json")
-                    .header("x-api-key", accessKey)
-                    .header("x-access-token", accessToken)
-                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(payload)))
-                    .build();
+            HttpRequest request = TcbApiService.buildPostJsonRequest(
+                    normalizeBaseUrl(baseUrl) + "/retailer/redeem",
+                    accessKey,
+                    accessToken,
+                    MAPPER.writeValueAsString(payload));
 
-            return HTTP_CLIENT
-                    .sendAsync(request, HttpResponse.BodyHandlers.ofString())
+            return CompletableFuture.supplyAsync(() ->
+                    TcbApiService.sendWithRetry(request, "retailer/redeem"))
                     .thenApply(response -> parseResolutionResponse(response, bucket));
 
         } catch (IOException exception) {
