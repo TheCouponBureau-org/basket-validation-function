@@ -25,7 +25,7 @@ public class TcbTokenService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final Path CACHE_FILE = Paths.get(
-            System.getProperty("user.home"),
+            System.getProperty("java.io.tmpdir"),
             ".tcb-basket-validator",
             "access-token-cache.json");
 
