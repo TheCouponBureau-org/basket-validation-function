@@ -40,10 +40,17 @@ public class TcbCouponResolutionService {
         }
 
         Map<Integer, List<ResolvedCouponItem>> resolvedCouponsByOriginalIndex = new HashMap<>();
+        Map<Integer, Boolean> attemptedResolutionByOriginalIndex = new HashMap<>();
         List<CouponBucket> buckets = buildBuckets(coupons);
 
         if (buckets.isEmpty()) {
             return new ArrayList<>(coupons);
+        }
+
+        for (CouponBucket bucket : buckets) {
+            for (Integer originalIndex : bucket.originalIndexes()) {
+                attemptedResolutionByOriginalIndex.put(originalIndex, true);
+            }
         }
 
         List<CompletableFuture<BucketResolution>> futures = new ArrayList<>();
@@ -73,6 +80,9 @@ public class TcbCouponResolutionService {
                     resolvedCouponsByOriginalIndex.get(index);
 
             if (resolvedItems == null || resolvedItems.isEmpty()) {
+                if (Boolean.TRUE.equals(attemptedResolutionByOriginalIndex.get(index))) {
+                    continue;
+                }
                 flattenedCoupons.add(coupons.get(index));
                 continue;
             }
@@ -198,13 +208,11 @@ public class TcbCouponResolutionService {
                     MAPPER.readValue(response.body(), RedeemResponse.class);
 
             if (redeemResponse.newlyRedeemed == null || redeemResponse.newlyRedeemed.isEmpty()) {
-                throw new IllegalStateException(
-                        "TCB redeem response did not contain newly_redeemed coupon data.");
+                return new BucketResolution(new HashMap<>());
             }
 
             if (redeemResponse.masterOfferFiles == null || redeemResponse.masterOfferFiles.isEmpty()) {
-                throw new IllegalStateException(
-                        "TCB redeem response did not contain master_offer_files.");
+                return new BucketResolution(new HashMap<>());
             }
 
             Map<Integer, List<ResolvedCouponItem>> resolvedByIndex = new HashMap<>();
@@ -214,14 +222,18 @@ public class TcbCouponResolutionService {
                 List<ResolvedCouponItem> resolvedCoupons = new ArrayList<>();
 
                 for (int sequence = 0; sequence < redeemResponse.newlyRedeemed.size(); sequence++) {
-                    resolvedCoupons.add(new ResolvedCouponItem(
-                            sequence,
-                            toResolvedCoupon(
-                                    redeemResponse.newlyRedeemed.get(sequence),
-                                    redeemResponse.masterOfferFiles)));
+                    Coupon resolvedCoupon = toResolvedCoupon(
+                            redeemResponse.newlyRedeemed.get(sequence),
+                            redeemResponse.masterOfferFiles);
+
+                    if (resolvedCoupon != null) {
+                        resolvedCoupons.add(new ResolvedCouponItem(sequence, resolvedCoupon));
+                    }
                 }
 
-                resolvedByIndex.put(ref.index, resolvedCoupons);
+                if (!resolvedCoupons.isEmpty()) {
+                    resolvedByIndex.put(ref.index, resolvedCoupons);
+                }
                 return new BucketResolution(resolvedByIndex);
             }
 
@@ -235,16 +247,21 @@ public class TcbCouponResolutionService {
                 RedeemedCoupon redeemedCoupon = redeemedByGs1.get(requestedCouponGs1.gs1);
 
                 if (redeemedCoupon == null) {
-                    throw new IllegalStateException(
-                            "TCB redeem response did not contain resolved data for gs1 "
-                                    + requestedCouponGs1.gs1);
+                    continue;
+                }
+
+                Coupon resolvedCoupon =
+                        toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles);
+
+                if (resolvedCoupon == null) {
+                    continue;
                 }
 
                 resolvedByIndex
                         .computeIfAbsent(requestedCouponGs1.couponRef.index, unused -> new ArrayList<>())
                         .add(new ResolvedCouponItem(
                                 requestedCouponGs1.sequence,
-                                toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles)));
+                                resolvedCoupon));
             }
 
             return new BucketResolution(resolvedByIndex);
@@ -262,16 +279,14 @@ public class TcbCouponResolutionService {
         if (redeemedCoupon == null
                 || isBlank(redeemedCoupon.gs1)
                 || isBlank(redeemedCoupon.masterOfferFile)) {
-            throw new IllegalStateException("TCB redeem response is missing gs1 or master_offer_file.");
+            return null;
         }
 
         PurchaseRequirement purchaseRequirement =
                 masterOfferFiles.get(redeemedCoupon.masterOfferFile);
 
         if (purchaseRequirement == null) {
-            throw new IllegalStateException(
-                    "TCB redeem response did not contain purchase requirements for master_offer_file "
-                            + redeemedCoupon.masterOfferFile);
+            return null;
         }
 
         Coupon resolvedCoupon = new Coupon();
@@ -319,6 +334,22 @@ public class TcbCouponResolutionService {
             this.couponRefs = couponRefs;
             this.requestedCouponGs1s = requestedCouponGs1s;
             this.singleCouponBucket = singleCouponBucket;
+        }
+
+        private List<Integer> originalIndexes() {
+            List<Integer> indexes = new ArrayList<>();
+
+            for (CouponRef couponRef : couponRefs) {
+                indexes.add(couponRef.index);
+            }
+
+            for (RequestedCouponGs1 requestedCouponGs1 : requestedCouponGs1s) {
+                if (!indexes.contains(requestedCouponGs1.couponRef.index)) {
+                    indexes.add(requestedCouponGs1.couponRef.index);
+                }
+            }
+
+            return indexes;
         }
     }
 
