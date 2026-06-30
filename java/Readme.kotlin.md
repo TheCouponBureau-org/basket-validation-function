@@ -53,6 +53,7 @@ Main classes:
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem`
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon`
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement`
+- `org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService`
 
 Example:
 
@@ -312,7 +313,43 @@ java -jar target/basket-validator-1.0-SNAPSHOT-all.jar '{"basket":[{"product_cod
 
 You can also invoke that script from Kotlin using `ProcessBuilder` if you prefer CLI integration over direct library usage.
 
-## 8. Dependency note
+## 8. Redeem coupons in TCB after discount application
+
+After your retailer system applies the discount, it should redeem the applied coupons in TCB.
+
+Use:
+
+- `TcbCouponRedeemService.redeemCoupons(...)`
+
+This method:
+
+- accepts a list of GS1 coupon codes
+- gets or reuses the cached TCB access token
+- calls the same `retailer/redeem` API
+- returns the raw JSON response body from TCB
+- does not send the `pre_process` field
+
+Kotlin example:
+
+```kotlin
+import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
+
+fun main() {
+    val responseJson = TcbCouponRedeemService.redeemCoupons(
+        "https://api.try.thecouponbureau.org/",
+        "8053fd0f80cf3778659def1359cac218",
+        "eb42623aa2675e50f15da4f6d4aa0ad6",
+        listOf(
+            "8112109988459000269133321426026193",
+            "8112109988459000269133587761214614"
+        )
+    )
+
+    println(responseJson)
+}
+```
+
+## 9. Dependency note
 
 For direct `java -jar` usage, prefer:
 
