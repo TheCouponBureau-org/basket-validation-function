@@ -27,10 +27,10 @@ target/basket-validator-1.0-SNAPSHOT.jar
 
 ## 2. Add the JAR to another Java project
 
-If your project is not using Maven publishing, copy the JAR into your project, for example:
+If your project is not using Maven publishing, copy the fat JAR into your project, for example:
 
 ```bash
-your-project/lib/basket-validator-1.0-SNAPSHOT.jar
+your-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
 Then add it to your classpath when compiling and running.
@@ -38,8 +38,8 @@ Then add it to your classpath when compiling and running.
 Example:
 
 ```bash
-javac -cp "lib/basket-validator-1.0-SNAPSHOT.jar" src/com/example/Main.java
-java -cp "lib/basket-validator-1.0-SNAPSHOT.jar:src" com.example.Main
+javac -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar" src/com/example/Main.java
+java -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar:src" com.example.Main
 ```
 
 On Windows use `;` instead of `:` in the classpath.
@@ -106,9 +106,9 @@ public class Main {
 }
 ```
 
-## 4. JSON-driven usage inside your own code
+## 4. JSON-string driven usage inside your own code
 
-If your application already works with JSON, deserialize into `BasketValidationInput`.
+If your application already works with JSON strings, deserialize into `BasketValidationInput`.
 
 The project uses Jackson `SNAKE_CASE`, so JSON like this maps correctly.
 
@@ -182,8 +182,6 @@ This example shows:
 Example:
 
 ```java
-import java.io.File;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
@@ -196,8 +194,70 @@ public class Main {
         ObjectMapper mapper = new ObjectMapper();
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
+        String jsonInput = """
+                {
+                  "basket": [
+                    {
+                      "product_code": "037000758365",
+                      "price": 1.99,
+                      "quantity": 12,
+                      "unit": "item"
+                    },
+                    {
+                      "product_code": "7106919588011",
+                      "price": 1.81,
+                      "quantity": 2,
+                      "unit": "item"
+                    },
+                    {
+                      "product_code": "037000925033",
+                      "price": 1.59,
+                      "quantity": 3,
+                      "unit": "item"
+                    }
+                  ],
+                  "coupons": [
+                    {
+                      "gs1": "8112109988459000269133321426026193"
+                    },
+                    {
+                      "gs1": "8112109988459000269133587761214614",
+                      "base_gs1": "811210998845900026",
+                      "purchase_requirement": {
+                        "primary_purchase_gtins": [
+                          "037000930396",
+                          "037000934677",
+                          "037000618737",
+                          "037000758365"
+                        ],
+                        "second_purchase_gtins": [
+                          "7106919588011",
+                          "8952803493171",
+                          "1305192154937"
+                        ],
+                        "third_purchase_gtins": [
+                          "037000779681",
+                          "037000523505",
+                          "037000925033"
+                        ],
+                        "primary_purchase_save_value": 1,
+                        "primary_purchase_requirements": 6,
+                        "primary_purchase_req_code": 0,
+                        "additional_purchase_rules_code": 2,
+                        "second_purchase_requirements": 2,
+                        "second_purchase_req_code": 0,
+                        "third_purchase_requirements": 3,
+                        "third_purchase_req_code": 0,
+                        "save_value_code": 2,
+                        "applies_to_which_item": 0
+                      }
+                    }
+                  ]
+                }
+                """;
+
         BasketValidationInput input =
-                mapper.readValue(new File("input.json"), BasketValidationInput.class);
+                mapper.readValue(jsonInput, BasketValidationInput.class);
 
         ValidationResult result = BasketValidator.validateBasketHelper(input);
         System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result));
@@ -221,10 +281,10 @@ If these are not provided, coupons missing `purchase_requirement` are ignored.
 
 ## 6. Important dependency note
 
-This JAR is not an uber JAR. If you use it directly in another project, that project must also have required dependencies available, especially:
+For direct `java -jar` usage, prefer:
 
-- Jackson
-- Apache POI
-- Log4j
+```bash
+target/basket-validator-1.0-SNAPSHOT-all.jar
+```
 
-If you want a single self-contained JAR, add shading/assembly and build a fat JAR separately.
+That fat JAR already includes dependencies.

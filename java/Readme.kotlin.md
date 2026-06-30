@@ -27,10 +27,10 @@ target/basket-validator-1.0-SNAPSHOT.jar
 
 ## 2. Add the JAR to your Kotlin project
 
-If you are using a local/manual setup, copy the JAR into your Kotlin project:
+If you are using a local/manual setup, copy the fat JAR into your Kotlin project:
 
 ```bash
-your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT.jar
+your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
 ## 3. Kotlin compile/run with classpath
@@ -38,8 +38,8 @@ your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT.jar
 Example using `kotlinc`:
 
 ```bash
-kotlinc -cp "lib/basket-validator-1.0-SNAPSHOT.jar" src/main/kotlin/Main.kt -d app.jar
-java -cp "app.jar:lib/basket-validator-1.0-SNAPSHOT.jar" MainKt
+kotlinc -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar" src/main/kotlin/Main.kt -d app.jar
+java -cp "app.jar:lib/basket-validator-1.0-SNAPSHOT-all.jar" MainKt
 ```
 
 On Windows, use `;` instead of `:`.
@@ -102,7 +102,7 @@ fun main() {
 }
 ```
 
-## 5. JSON-driven usage from Kotlin
+## 5. JSON-string driven usage from Kotlin
 
 The Java models expect `snake_case` JSON when using Jackson.
 
@@ -180,7 +180,6 @@ Kotlin example:
 ```kotlin
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.PropertyNamingStrategies
-import java.io.File
 import org.thecouponbureau.validate.basket.core.BasketValidator
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
 
@@ -189,8 +188,70 @@ fun main() {
         propertyNamingStrategy = PropertyNamingStrategies.SNAKE_CASE
     }
 
+    val jsonInput = """
+        {
+          "basket": [
+            {
+              "product_code": "037000758365",
+              "price": 1.99,
+              "quantity": 12,
+              "unit": "item"
+            },
+            {
+              "product_code": "7106919588011",
+              "price": 1.81,
+              "quantity": 2,
+              "unit": "item"
+            },
+            {
+              "product_code": "037000925033",
+              "price": 1.59,
+              "quantity": 3,
+              "unit": "item"
+            }
+          ],
+          "coupons": [
+            {
+              "gs1": "8112109988459000269133321426026193"
+            },
+            {
+              "gs1": "8112109988459000269133587761214614",
+              "base_gs1": "811210998845900026",
+              "purchase_requirement": {
+                "primary_purchase_gtins": [
+                  "037000930396",
+                  "037000934677",
+                  "037000618737",
+                  "037000758365"
+                ],
+                "second_purchase_gtins": [
+                  "7106919588011",
+                  "8952803493171",
+                  "1305192154937"
+                ],
+                "third_purchase_gtins": [
+                  "037000779681",
+                  "037000523505",
+                  "037000925033"
+                ],
+                "primary_purchase_save_value": 1,
+                "primary_purchase_requirements": 6,
+                "primary_purchase_req_code": 0,
+                "additional_purchase_rules_code": 2,
+                "second_purchase_requirements": 2,
+                "second_purchase_req_code": 0,
+                "third_purchase_requirements": 3,
+                "third_purchase_req_code": 0,
+                "save_value_code": 2,
+                "applies_to_which_item": 0
+              }
+            }
+          ]
+        }
+    """.trimIndent()
+
     val input = mapper.readValue(
-        File("input.json"),
+        jsonInput,
         BasketValidationInput::class.java
     )
 
@@ -224,21 +285,21 @@ The project includes:
 Examples:
 
 ```bash
-./run-validation.sh input-gs1-only.json
+./run-validation.sh '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"}]}'
 ```
 
 ```bash
-./run-validation.sh input-gs1-only.json "https://api.try.thecouponbureau.org" "YOUR_ACCESS_KEY" "YOUR_SECRET_KEY"
+./run-validation.sh '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"}]}' "https://api.try.thecouponbureau.org" "YOUR_ACCESS_KEY" "YOUR_SECRET_KEY"
 ```
 
 You can also invoke that script from Kotlin using `ProcessBuilder` if you prefer CLI integration over direct library usage.
 
 ## 8. Dependency note
 
-This JAR is not a fat JAR. Your Kotlin project still needs runtime dependencies available, especially:
+For direct `java -jar` usage, prefer:
 
-- Jackson
-- Apache POI
-- Log4j
+```bash
+target/basket-validator-1.0-SNAPSHOT-all.jar
+```
 
-If you want a single self-contained artifact, build an uber JAR separately.
+That fat JAR already includes dependencies.

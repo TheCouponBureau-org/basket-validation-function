@@ -20,4 +20,4 @@ fi
 echo "Standard jar created at: $JAR_PATH"
 echo "Fat jar created at: $FAT_JAR_PATH"
 echo "Recommended run command:"
-echo "java -jar $FAT_JAR_PATH input-gs1-only.json [tcb-base-url tcb-access-key tcb-secret-key]"
+echo "java -jar $FAT_JAR_PATH '<input-json-string>' [tcb-base-url tcb-access-key tcb-secret-key]"

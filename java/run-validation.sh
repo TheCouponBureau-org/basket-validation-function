@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 1 ] && [ "$#" -ne 4 ]; then
-  echo "Usage: ./run-validation.sh <input-json> [<tcb-base-url> <tcb-access-key> <tcb-secret-key>]" >&2
+  echo "Usage: ./run-validation.sh '<input-json-string>' [<tcb-base-url> <tcb-access-key> <tcb-secret-key>]" >&2
   exit 1
 fi
 

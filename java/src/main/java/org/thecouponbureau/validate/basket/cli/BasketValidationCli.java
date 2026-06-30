@@ -1,7 +1,5 @@
 package org.thecouponbureau.validate.basket.cli;
 
-import java.io.File;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
@@ -14,7 +12,7 @@ public class BasketValidationCli {
     public static void main(String[] args) throws Exception {
         if (args.length != 1 && args.length != 4) {
             System.err.println(
-                    "Usage: BasketValidationCli <input-json> [<tcb-base-url> <tcb-access-key> <tcb-secret-key>]");
+                    "Usage: BasketValidationCli <input-json-string> [<tcb-base-url> <tcb-access-key> <tcb-secret-key>]");
             System.exit(1);
         }
 
@@ -22,7 +20,7 @@ public class BasketValidationCli {
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
         BasketValidationInput input =
-                mapper.readValue(new File(args[0]), BasketValidationInput.class);
+                mapper.readValue(args[0], BasketValidationInput.class);
 
         if (args.length == 4) {
             input.tcbBaseUrl = args[1];
