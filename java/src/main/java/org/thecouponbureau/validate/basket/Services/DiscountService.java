@@ -1,12 +1,12 @@
-package com.tcb.validate.basket.Services;
+package org.thecouponbureau.validate.basket.Services;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import com.tcb.validate.basket.helper.BasketHelper;
-import com.tcb.validate.basket.model.basketValidationResults.BasketItem;
-import com.tcb.validate.basket.model.basketValidationResults.Coupon;
+import org.thecouponbureau.validate.basket.helper.BasketHelper;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
 
 public class DiscountService {
 
@@ -140,15 +140,13 @@ public class DiscountService {
 
 			// Iterate through basket items
 			for (BasketItem item : basketItems) {
-
-				// Filter based on purchase type
-				if (Objects.equals(appliesToWhichItem, 0) && item.purchaseType != null) {
+				if (Objects.equals(appliesToWhichItem, 0) && item.purchaseGroup != null) {
 					continue;
 				}
-				if (Objects.equals(appliesToWhichItem, 1) && !"second_purchase".equals(item.purchaseType)) {
+				if (Objects.equals(appliesToWhichItem, 1) && !"second_purchase".equals(item.purchaseGroup)) {
 					continue;
 				}
-				if (Objects.equals(appliesToWhichItem, 2) && !"third_purchase".equals(item.purchaseType)) {
+				if (Objects.equals(appliesToWhichItem, 2) && !"third_purchase".equals(item.purchaseGroup)) {
 					continue;
 				}
 
@@ -242,32 +240,27 @@ public class DiscountService {
 	public static List<BasketItem> applicableBasketItems(
 			List<BasketItem> basketItems,
 			Integer appliesToWhichItem) {
-
 		List<BasketItem> result = new ArrayList<>();
 
-		// If null → apply to all items
 		if (appliesToWhichItem == null) {
 			result.addAll(basketItems);
-
-			// Primary purchase items
 		} else if (appliesToWhichItem == 0) {
 			for (BasketItem item : basketItems) {
-				if (item.purchaseType == null)
+				if (item.purchaseGroup == null) {
 					result.add(item);
+				}
 			}
-
-			// Second purchase items
 		} else if (appliesToWhichItem == 1) {
 			for (BasketItem item : basketItems) {
-				if ("second_purchase".equals(item.purchaseType))
+				if ("second_purchase".equals(item.purchaseGroup)) {
 					result.add(item);
+				}
 			}
-
-			// Third purchase items
 		} else if (appliesToWhichItem == 2) {
 			for (BasketItem item : basketItems) {
-				if ("third_purchase".equals(item.purchaseType))
+				if ("third_purchase".equals(item.purchaseGroup)) {
 					result.add(item);
+				}
 			}
 		}
 

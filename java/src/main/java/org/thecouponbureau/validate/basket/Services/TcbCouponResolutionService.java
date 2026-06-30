@@ -1,0 +1,288 @@
+package org.thecouponbureau.validate.basket.Services;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+
+import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
+
+public class TcbCouponResolutionService {
+
+    private static final int REDEEM_BATCH_SIZE = 15;
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+
+    public static List<Coupon> resolveCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<Coupon> coupons) {
+
+        if (coupons == null || coupons.isEmpty()) {
+            return coupons;
+        }
+
+        List<Coupon> resolvedCoupons = new ArrayList<>(coupons);
+        List<CouponBucket> buckets = buildBuckets(coupons);
+
+        if (buckets.isEmpty()) {
+            return resolvedCoupons;
+        }
+
+        List<CompletableFuture<BucketResolution>> futures = new ArrayList<>();
+
+        for (CouponBucket bucket : buckets) {
+            futures.add(requestRedeemAsync(baseUrl, accessKey, accessToken, bucket));
+        }
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        for (CompletableFuture<BucketResolution> future : futures) {
+            BucketResolution bucketResolution = future.join();
+
+            for (Map.Entry<Integer, Coupon> entry : bucketResolution.resolvedCouponsByIndex.entrySet()) {
+                resolvedCoupons.set(entry.getKey(), entry.getValue());
+            }
+        }
+
+        return resolvedCoupons;
+    }
+
+    private static List<CouponBucket> buildBuckets(List<Coupon> coupons) {
+        List<CouponBucket> buckets = new ArrayList<>();
+        List<CouponRef> groupedCoupons = new ArrayList<>();
+
+        for (int index = 0; index < coupons.size(); index++) {
+            Coupon coupon = coupons.get(index);
+
+            if (!needsResolution(coupon)) {
+                continue;
+            }
+
+            CouponRef ref = new CouponRef(index, coupon);
+
+            if (coupon.gs1.length() == 16) {
+                buckets.add(new CouponBucket(List.of(ref), true));
+                continue;
+            }
+
+            groupedCoupons.add(ref);
+        }
+
+        for (int start = 0; start < groupedCoupons.size(); start += REDEEM_BATCH_SIZE) {
+            int end = Math.min(start + REDEEM_BATCH_SIZE, groupedCoupons.size());
+            buckets.add(new CouponBucket(new ArrayList<>(groupedCoupons.subList(start, end)), false));
+        }
+
+        return buckets;
+    }
+
+    private static boolean needsResolution(Coupon coupon) {
+        return coupon != null
+                && !isBlank(coupon.gs1)
+                && coupon.baseGs1 == null
+                && coupon.purchaseRequirement == null;
+    }
+
+    private static CompletableFuture<BucketResolution> requestRedeemAsync(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            CouponBucket bucket) {
+
+        try {
+            RedeemRequest payload = new RedeemRequest();
+
+            for (CouponRef ref : bucket.couponRefs) {
+                payload.gs1s.add(ref.coupon.gs1);
+            }
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(normalizeBaseUrl(baseUrl) + "/retailer/redeem"))
+                    .header("Content-Type", "application/json")
+                    .header("x-api-key", accessKey)
+                    .header("x-access-token", accessToken)
+                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(payload)))
+                    .build();
+
+            return HTTP_CLIENT
+                    .sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> parseResolutionResponse(response, bucket));
+
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to serialize TCB redeem request.", exception);
+        }
+    }
+
+    private static BucketResolution parseResolutionResponse(
+            HttpResponse<String> response,
+            CouponBucket bucket) {
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException(
+                    "TCB retailer/redeem request failed with HTTP " + response.statusCode());
+        }
+
+        try {
+            RedeemResponse redeemResponse =
+                    MAPPER.readValue(response.body(), RedeemResponse.class);
+
+            if (redeemResponse.newlyRedeemed == null || redeemResponse.newlyRedeemed.isEmpty()) {
+                throw new IllegalStateException(
+                        "TCB redeem response did not contain newly_redeemed coupon data.");
+            }
+
+            if (redeemResponse.masterOfferFiles == null || redeemResponse.masterOfferFiles.isEmpty()) {
+                throw new IllegalStateException(
+                        "TCB redeem response did not contain master_offer_files.");
+            }
+
+            Map<Integer, Coupon> resolvedByIndex = new HashMap<>();
+
+            if (bucket.singleCouponBucket) {
+                CouponRef ref = bucket.couponRefs.get(0);
+                RedeemedCoupon redeemedCoupon = redeemResponse.newlyRedeemed.get(0);
+                resolvedByIndex.put(ref.index, toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles));
+                return new BucketResolution(resolvedByIndex);
+            }
+
+            Map<String, RedeemedCoupon> redeemedByGs1 = new HashMap<>();
+
+            for (RedeemedCoupon redeemedCoupon : redeemResponse.newlyRedeemed) {
+                redeemedByGs1.put(redeemedCoupon.gs1, redeemedCoupon);
+            }
+
+            for (CouponRef ref : bucket.couponRefs) {
+                RedeemedCoupon redeemedCoupon = redeemedByGs1.get(ref.coupon.gs1);
+
+                if (redeemedCoupon == null) {
+                    throw new IllegalStateException(
+                            "TCB redeem response did not contain resolved data for gs1 " + ref.coupon.gs1);
+                }
+
+                resolvedByIndex.put(
+                        ref.index,
+                        toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles));
+            }
+
+            return new BucketResolution(resolvedByIndex);
+
+        } catch (IOException exception) {
+            throw new CompletionException(
+                    new IllegalStateException("Unable to parse TCB redeem response.", exception));
+        }
+    }
+
+    private static Coupon toResolvedCoupon(
+            RedeemedCoupon redeemedCoupon,
+            Map<String, PurchaseRequirement> masterOfferFiles) {
+
+        if (redeemedCoupon == null
+                || isBlank(redeemedCoupon.gs1)
+                || isBlank(redeemedCoupon.masterOfferFile)) {
+            throw new IllegalStateException("TCB redeem response is missing gs1 or master_offer_file.");
+        }
+
+        PurchaseRequirement purchaseRequirement =
+                masterOfferFiles.get(redeemedCoupon.masterOfferFile);
+
+        if (purchaseRequirement == null) {
+            throw new IllegalStateException(
+                    "TCB redeem response did not contain purchase requirements for master_offer_file "
+                            + redeemedCoupon.masterOfferFile);
+        }
+
+        Coupon resolvedCoupon = new Coupon();
+        resolvedCoupon.gs1 = redeemedCoupon.gs1;
+        resolvedCoupon.baseGs1 = redeemedCoupon.masterOfferFile;
+        resolvedCoupon.purchaseRequirement = purchaseRequirement;
+        return resolvedCoupon;
+    }
+
+    private static String normalizeBaseUrl(String baseUrl) {
+        if (isBlank(baseUrl)) {
+            throw new IllegalArgumentException("tcbBaseUrl is required for TCB coupon resolution.");
+        }
+
+        if (baseUrl.endsWith("/")) {
+            return baseUrl.substring(0, baseUrl.length() - 1);
+        }
+
+        return baseUrl;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static class CouponRef {
+        private final int index;
+        private final Coupon coupon;
+
+        private CouponRef(int index, Coupon coupon) {
+            this.index = index;
+            this.coupon = coupon;
+        }
+    }
+
+    private static class CouponBucket {
+        private final List<CouponRef> couponRefs;
+        private final boolean singleCouponBucket;
+
+        private CouponBucket(List<CouponRef> couponRefs, boolean singleCouponBucket) {
+            this.couponRefs = couponRefs;
+            this.singleCouponBucket = singleCouponBucket;
+        }
+    }
+
+    private static class BucketResolution {
+        private final Map<Integer, Coupon> resolvedCouponsByIndex;
+
+        private BucketResolution(Map<Integer, Coupon> resolvedCouponsByIndex) {
+            this.resolvedCouponsByIndex = resolvedCouponsByIndex;
+        }
+    }
+
+    private static class RedeemRequest {
+        public List<String> gs1s = new ArrayList<>();
+        @JsonProperty("pre_process")
+        public String preProcess = "yes";
+        @JsonProperty("include_check_digit")
+        public String includeCheckDigit = "yes";
+        @JsonProperty("no_purchase_requirement")
+        public String noPurchaseRequirement = "";
+        public String offline = "";
+        @JsonProperty("client_txn_id")
+        public String clientTxnId = "";
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class RedeemResponse {
+        @JsonProperty("newly_redeemed")
+        public List<RedeemedCoupon> newlyRedeemed;
+        @JsonProperty("master_offer_files")
+        public Map<String, PurchaseRequirement> masterOfferFiles;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class RedeemedCoupon {
+        public String gs1;
+        @JsonProperty("master_offer_file")
+        public String masterOfferFile;
+    }
+}

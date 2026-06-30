@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-
 import org.thecouponbureau.validate.basket.factory.PurchaseFactory;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketHasUnitsResult;
@@ -17,6 +16,9 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Purchas
 import org.thecouponbureau.validate.basket.model.basketValidationResults.Purchases;
 
 public class RequirementService {
+
+    private static final List<String> PURCHASE_GROUPS =
+            Arrays.asList(null, "second_purchase", "third_purchase");
 
     // =====================================================
     // Main entry: Checks if basket satisfies coupon requirements
@@ -69,9 +71,6 @@ public class RequirementService {
             List<Purchase> purchases =
                     Arrays.asList(primaryPurchase, secondPurchase, thirdPurchase);
 
-            List<String> purchaseTypes =
-                    Arrays.asList("", "second_purchase", "third_purchase");
-
             // No restriction → try all purchase types
             if (appliesToWhichItem == null) {
 
@@ -107,11 +106,10 @@ public class RequirementService {
                                     List<BasketItem> basketItems =
                                             BasketHelper.copyBasketList(result.basketItems);
 
-                                    // Assign purchase type if secondary/third
                                     if (i > 0) {
-                                        for (BasketItem item : basketItems) {
-                                            item.purchaseType = purchaseTypes.get(i);
-                                        }
+                                        assignPurchaseGroup(
+                                                basketItems,
+                                                PURCHASE_GROUPS.get(i));
                                     }
 
                                     MeetsRequirementsResult out =
@@ -148,10 +146,9 @@ public class RequirementService {
                                 BasketHelper.copyBasketList(result.basketItems);
 
                         if (appliesToWhichItem > 0) {
-                            for (BasketItem item : basketItems) {
-                                item.purchaseType =
-                                        purchaseTypes.get(appliesToWhichItem);
-                            }
+                            assignPurchaseGroup(
+                                    basketItems,
+                                    PURCHASE_GROUPS.get(appliesToWhichItem));
                         }
 
                         MeetsRequirementsResult out =
@@ -224,16 +221,9 @@ public class RequirementService {
                 unitsToPurchase3 = r3.unitsToPurchase;
             }
 
-            // Assign purchase types
-            if (basketItems2 != null)
-                for (BasketItem item : basketItems2)
-                    item.purchaseType = "second_purchase";
+            assignPurchaseGroup(basketItems2, "second_purchase");
+            assignPurchaseGroup(basketItems3, "third_purchase");
 
-            if (basketItems3 != null)
-                for (BasketItem item : basketItems3)
-                    item.purchaseType = "third_purchase";
-
-            // Combine all qualifying items
             List<BasketItem> combined = new ArrayList<>();
             combined.addAll(basketItems1);
             if (basketItems2 != null) combined.addAll(basketItems2);
@@ -291,13 +281,9 @@ public class RequirementService {
 
             // Require at least one of secondary or third
             if (status2 && basketItems2 != null) {
-                for (BasketItem item : basketItems2)
-                    item.purchaseType = "second_purchase";
-
+                assignPurchaseGroup(basketItems2, "second_purchase");
             } else if (status3 && basketItems3 != null) {
-                for (BasketItem item : basketItems3)
-                    item.purchaseType = "third_purchase";
-
+                assignPurchaseGroup(basketItems3, "third_purchase");
             } else {
                 return MeetsRequirementsResult.negative();
             }
@@ -426,9 +412,7 @@ public class RequirementService {
                     }
                 }
 
-                // Mark reusable for other conditions
-                copied.purchaseReuse = true;
-
+                copied.reusableForOtherConditions = true;
                 updatedBasket.add(copied);
             }
 
@@ -509,5 +493,18 @@ public class RequirementService {
         }
 
         return 0;
+    }
+
+    private static void assignPurchaseGroup(
+            List<BasketItem> basketItems,
+            String purchaseGroup) {
+
+        if (basketItems == null || purchaseGroup == null) {
+            return;
+        }
+
+        for (BasketItem item : basketItems) {
+            item.purchaseGroup = purchaseGroup;
+        }
     }
 }

@@ -1,0 +1,19 @@
+/target/
+
+# Maven wrapper
+/.mvn/wrapper/maven-wrapper.jar
+
+# Eclipse
+/.classpath
+/.project
+/.settings/
+
+# IntelliJ IDEA
+/.idea/
+/*.iml
+
+# VS Code
+/.vscode/
+
+# OS files
+/.DS_Store

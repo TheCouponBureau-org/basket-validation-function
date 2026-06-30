@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.thecouponbureau.validate.basket.Services.BasketReducerService;
+import org.thecouponbureau.validate.basket.Services.TcbCouponResolutionService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
 import org.thecouponbureau.validate.basket.Services.RequirementService;
+import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
 import org.thecouponbureau.validate.basket.helper.BasketHelper.Status;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
@@ -70,6 +72,26 @@ public class BasketValidator {
         basketValidationOutput.discountInCents = 0;
         basketValidationOutput.appliedCoupons = new ArrayList<>();
 
+        List<Coupon> couponsToProcess = basketValidationInput.coupons;
+
+        if (hasCouponsToResolve(couponsToProcess)
+                && hasTcbCredentials(basketValidationInput)) {
+            String accessToken = TcbTokenService.getAccessToken(
+                    basketValidationInput.tcbBaseUrl,
+                    basketValidationInput.tcbAccessKey,
+                    basketValidationInput.tcbSecretKey
+            );
+
+            couponsToProcess = TcbCouponResolutionService.resolveCoupons(
+                    basketValidationInput.tcbBaseUrl,
+                    basketValidationInput.tcbAccessKey,
+                    accessToken,
+                    couponsToProcess
+            );
+
+            basketValidationInput.coupons = couponsToProcess;
+        }
+
         // Step 1: Normalize basket (merge duplicates)
         List<BasketItem> newBasket =
                 BasketHelper.mergeBasketItems(basketValidationInput.basket);
@@ -80,7 +102,7 @@ public class BasketValidator {
         // =====================================================
         // Process each coupon sequentially
         // =====================================================
-        for (Coupon coupon : basketValidationInput.coupons) {
+        for (Coupon coupon : couponsToProcess) {
         	
         	
             index++;
@@ -218,5 +240,33 @@ public class BasketValidator {
         result.notAllCouponsConsumed = notAllCouponsConsumed;
 
         return result;
+    }
+
+    private static boolean hasCouponsToResolve(List<Coupon> coupons) {
+        if (coupons == null || coupons.isEmpty()) {
+            return false;
+        }
+
+        for (Coupon coupon : coupons) {
+            if (coupon != null
+                    && coupon.gs1 != null
+                    && coupon.baseGs1 == null
+                    && coupon.purchaseRequirement == null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean hasTcbCredentials(BasketValidationInput input) {
+        return input != null
+                && !isBlank(input.tcbBaseUrl)
+                && !isBlank(input.tcbAccessKey)
+                && !isBlank(input.tcbSecretKey);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

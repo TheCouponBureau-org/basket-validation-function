@@ -50,9 +50,8 @@ public class BasketHelper {
 				newItem.price = roundTo2(item.price);
 				newItem.quantity = item.quantity;
 				newItem.unit = item.unit;
-				newItem.productType = item.productType;
-				newItem.purchaseType = item.purchaseType;
-				newItem.purchaseReuse = item.purchaseReuse;
+				newItem.purchaseGroup = item.purchaseGroup;
+				newItem.reusableForOtherConditions = item.reusableForOtherConditions;
 
 				mergedBasket.put(key, newItem);
 			}
@@ -96,26 +95,16 @@ public class BasketHelper {
 	}
 
 	// =====================================================
-	// Group product codes by product type
+	// Group product codes under GTINs
 	// =====================================================
 	public static Map<String, List<String>> getProductCodes(
 			List<BasketItem> basketItems) {
 
 		Map<String, List<String>> productCodes = new HashMap<>();
+		List<String> gtins = productCodes.computeIfAbsent("gtins", k -> new ArrayList<>());
 
 		for (BasketItem item : basketItems) {
-
-			// Default group → GTINs
-			if (item.productType == null) {
-				productCodes
-				.computeIfAbsent("gtins", k -> new ArrayList<>())
-				.add(item.productCode);
-
-			} else {
-				productCodes
-				.computeIfAbsent(item.productType, k -> new ArrayList<>())
-				.add(item.productCode);
-			}
+			gtins.add(item.productCode);
 		}
 
 		return productCodes;
@@ -149,16 +138,14 @@ public class BasketHelper {
 				continue;
 			}
 
-			// Prefix inclusion range
 			Range range = hasPrefixed
-					? purchase.prefixedCode.get(item.productType)
-							: null;
+					? firstMatchingRange(item.productCode, purchase.prefixedCode)
+					: null;
 
-			// Prefix exclusion range
 			Range excludedRange =
 					purchase.excludedPrefixedCode != null
-					? purchase.excludedPrefixedCode.get(item.productType)
-							: null;
+					? firstMatchingRange(item.productCode, purchase.excludedPrefixedCode)
+					: null;
 
 			// Exclude if within excluded prefix range
 			if (excludedRange != null &&
@@ -186,6 +173,28 @@ public class BasketHelper {
 		}
 
 		return allowedBasketItems;
+	}
+
+	private static Range firstMatchingRange(
+			String productCode,
+			Map<String, Range> prefixedCodes) {
+
+		if (prefixedCodes == null || prefixedCodes.isEmpty()) {
+			return null;
+		}
+
+		for (Range range : prefixedCodes.values()) {
+			if (range == null || range.start == null || range.end == null) {
+				continue;
+			}
+
+			if (compareStringNumbers(productCode, range.start) >= 0
+					&& compareStringNumbers(productCode, range.end) <= 0) {
+				return range;
+			}
+		}
+
+		return null;
 	}
 
 	// =====================================================
@@ -240,9 +249,8 @@ public class BasketHelper {
 		copy.price = item.price;
 		copy.quantity = item.quantity;
 		copy.unit = item.unit;
-		copy.productType = item.productType;
-		copy.purchaseType = item.purchaseType;
-		copy.purchaseReuse = item.purchaseReuse;
+		copy.purchaseGroup = item.purchaseGroup;
+		copy.reusableForOtherConditions = item.reusableForOtherConditions;
 
 		return copy;
 	}

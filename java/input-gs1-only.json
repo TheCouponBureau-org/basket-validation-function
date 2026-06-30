@@ -1,0 +1,27 @@
+{
+  "basket": [
+    {
+      "product_code": "037000758365",
+      "price": 1.99,
+      "quantity": 12,
+      "unit": "item"
+    },
+    {
+      "product_code": "7106919588011",
+      "price": 1.81,
+      "quantity": 2,
+      "unit": "item"
+    },
+    {
+      "product_code": "037000925033",
+      "price": 1.59,
+      "quantity": 3,
+      "unit": "item"
+    }
+  ],
+  "coupons": [
+    {
+      "gs1": "81121099884590002691333214260261938112109988459000269133587761214614"
+    }
+  ]
+}

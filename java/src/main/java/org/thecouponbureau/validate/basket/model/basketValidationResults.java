@@ -37,6 +37,9 @@ public class basketValidationResults {
     public static class BasketValidationInput {
         public List<BasketItem> basket;
         public List<Coupon> coupons;
+        public String tcbBaseUrl;
+        public String tcbAccessKey;
+        public String tcbSecretKey;
     }
 
     // =====================================================
@@ -96,9 +99,8 @@ public class basketValidationResults {
         public double price;           // Price per unit
         public int quantity;           // Quantity in basket
         public String unit;            // Unit type (e.g., kg, pcs)
-        public String productType;     // Category/type
-        public String purchaseType;    // primary / second / third
-        public Boolean purchaseReuse;  // Can this item be reused for multiple rules
+        public String purchaseGroup;   // Internal grouping marker for rule engine
+        public Boolean reusableForOtherConditions; // Internal reuse marker
     }
 
     /**
@@ -114,6 +116,7 @@ public class basketValidationResults {
     /**
      * Defines all purchase rules for a coupon
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PurchaseRequirement {
 
         // Discount type (flat, percentage, free item, etc.)

@@ -1,7 +1,6 @@
 package org.thecouponbureau.validate.basket.Services;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -34,8 +33,7 @@ public class BasketReducerService {
             // Will store consumed portion of this item
             BasketItem consumedBasketItem = null;
 
-            // Iterate over all unit requirement keys (primary, second, third purchase)
-            for (String key : Arrays.asList(
+            for (String key : List.of(
                     "units_to_purchase",
                     "units_to_purchase2",
                     "units_to_purchase3")) {
@@ -79,23 +77,17 @@ public class BasketReducerService {
                             basketItem.quantity = 0;
                         }
 
-                        // =====================================================
-                        // Handle purchase reuse logic
-                        // If allowed, consumed items can satisfy other unit requirements
-                        // =====================================================
-                        if (Boolean.TRUE.equals(allowedBasketItem.purchaseReuse)) {
+                        if (Boolean.TRUE.equals(allowedBasketItem.reusableForOtherConditions)) {
 
-                            for (String otherKey : Arrays.asList(
+                            for (String otherKey : List.of(
                                     "units_to_purchase",
                                     "units_to_purchase2",
                                     "units_to_purchase3")) {
 
                                 Integer otherValue = unitsHolder.get(otherKey);
 
-                                // Skip same key & ensure requirement exists
                                 if (!otherKey.equals(key) && otherValue != null && otherValue > 0) {
 
-                                    // Check eligibility for other purchase type
                                     BasketItem allowedBasketItemOther =
                                             allowedBasketItemsIncludes(
                                                     allowedBasketItems,
@@ -103,8 +95,6 @@ public class BasketReducerService {
                                                     otherKey);
 
                                     if (allowedBasketItemOther != null && allowedBasketItemOther.quantity > 0) {
-
-                                        // Reduce requirement using consumed quantity
                                         int reduceQuantityOther =
                                                 Math.min(otherValue, consumedBasketItem.quantity);
 
@@ -145,20 +135,18 @@ public class BasketReducerService {
             String keyUnitsToPurchase) {
 
         for (BasketItem allowedBasketItem : allowedBasketItems) {
-
-            // Filter by purchase type
             if ("units_to_purchase".equals(keyUnitsToPurchase)
-                    && allowedBasketItem.purchaseType != null) {
+                    && allowedBasketItem.purchaseGroup != null) {
                 continue;
             }
 
             if ("units_to_purchase2".equals(keyUnitsToPurchase)
-                    && !"second_purchase".equals(allowedBasketItem.purchaseType)) {
+                    && !"second_purchase".equals(allowedBasketItem.purchaseGroup)) {
                 continue;
             }
 
             if ("units_to_purchase3".equals(keyUnitsToPurchase)
-                    && !"third_purchase".equals(allowedBasketItem.purchaseType)) {
+                    && !"third_purchase".equals(allowedBasketItem.purchaseGroup)) {
                 continue;
             }
 
@@ -181,9 +169,8 @@ public class BasketReducerService {
         copy.price = item.price;
         copy.quantity = item.quantity;
         copy.unit = item.unit;
-        copy.productType = item.productType;
-        copy.purchaseType = item.purchaseType;
-        copy.purchaseReuse = item.purchaseReuse;
+        copy.purchaseGroup = item.purchaseGroup;
+        copy.reusableForOtherConditions = item.reusableForOtherConditions;
         return copy;
     }
 }
