@@ -106,28 +106,69 @@ fun main() {
 
 The Java models expect `snake_case` JSON when using Jackson.
 
+This example shows:
+
+- one coupon with only `gs1` that can be resolved through TCB
+- one coupon that already includes `base_gs1` and `purchase_requirement`
+
 Example JSON:
 
 ```json
 {
   "basket": [
     {
-      "product_code": "037000930396",
-      "price": 1.29,
-      "quantity": 1,
+      "product_code": "037000758365",
+      "price": 1.99,
+      "quantity": 12,
+      "unit": "item"
+    },
+    {
+      "product_code": "7106919588011",
+      "price": 1.81,
+      "quantity": 2,
+      "unit": "item"
+    },
+    {
+      "product_code": "037000925033",
+      "price": 1.59,
+      "quantity": 3,
       "unit": "item"
     }
   ],
   "coupons": [
     {
-      "gs1": "8112009988459000019133924009755364",
-      "base_gs1": "811200998845900001",
+      "gs1": "8112109988459000269133321426026193"
+    },
+    {
+      "gs1": "8112109988459000269133587761214614",
+      "base_gs1": "811210998845900026",
       "purchase_requirement": {
-        "primary_purchase_gtins": ["037000930396"],
-        "primary_purchase_requirements": 1,
+        "primary_purchase_gtins": [
+          "037000930396",
+          "037000934677",
+          "037000618737",
+          "037000758365"
+        ],
+        "second_purchase_gtins": [
+          "7106919588011",
+          "8952803493171",
+          "1305192154937"
+        ],
+        "third_purchase_gtins": [
+          "037000779681",
+          "037000523505",
+          "037000925033"
+        ],
+        "primary_purchase_save_value": 1,
+        "primary_purchase_requirements": 6,
         "primary_purchase_req_code": 0,
-        "primary_purchase_save_value": 100,
-        "save_value_code": 0
+        "additional_purchase_rules_code": 2,
+        "second_purchase_requirements": 2,
+        "second_purchase_req_code": 0,
+        "third_purchase_requirements": 3,
+        "third_purchase_req_code": 0,
+        "save_value_code": 2,
+        "applies_to_which_item": 0
       }
     }
   ]
