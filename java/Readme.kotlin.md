@@ -1,15 +1,12 @@
 # Using `basket-validator-1.0-SNAPSHOT.jar` from Kotlin
 
+Use this package as a library from your Kotlin code.
+
 This project builds:
 
 ```bash
 target/basket-validator-1.0-SNAPSHOT.jar
 ```
-
-You can use this JAR from a Kotlin project in 2 common ways:
-
-1. Call the validator classes directly from Kotlin
-2. Run the validator as a CLI from your Kotlin app or scripts
 
 ## 1. Build the JAR
 
@@ -284,37 +281,7 @@ input.tcbAccessKey = "8053fd0f80cf3778659def1359cac218"
 input.tcbSecretKey = "eb42623aa2675e50f15da4f6d4aa0ad6"
 ```
 
-## 7. Running the CLI from Kotlin or shell
-
-The project includes:
-
-```bash
-./run-validation.sh
-```
-
-Examples:
-
-```bash
-./run-validation.sh '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"}]}'
-```
-
-```bash
-./run-validation.sh '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"}]}' "https://api.try.thecouponbureau.org" "YOUR_ACCESS_KEY" "YOUR_SECRET_KEY"
-```
-
-Fat JAR examples:
-
-```bash
-java -jar target/basket-validator-1.0-SNAPSHOT-all.jar '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"}]}'
-```
-
-```bash
-java -jar target/basket-validator-1.0-SNAPSHOT-all.jar '{"basket":[{"product_code":"037000758365","price":1.99,"quantity":12,"unit":"item"},{"product_code":"7106919588011","price":1.81,"quantity":2,"unit":"item"},{"product_code":"037000925033","price":1.59,"quantity":3,"unit":"item"}],"coupons":[{"gs1":"8112109988459000269133321426026193"},{"gs1":"8112109988459000269133587761214614","base_gs1":"811210998845900026","purchase_requirement":{"primary_purchase_gtins":["037000930396","037000934677","037000618737","037000758365"],"second_purchase_gtins":["7106919588011","8952803493171","1305192154937"],"third_purchase_gtins":["037000779681","037000523505","037000925033"],"primary_purchase_save_value":1,"primary_purchase_requirements":6,"primary_purchase_req_code":0,"additional_purchase_rules_code":2,"second_purchase_requirements":2,"second_purchase_req_code":0,"third_purchase_requirements":3,"third_purchase_req_code":0,"save_value_code":2,"applies_to_which_item":0}}]}' "https://api.try.thecouponbureau.org/" "8053fd0f80cf3778659def1359cac218" "eb42623aa2675e50f15da4f6d4aa0ad6"
-```
-
-You can also invoke that script from Kotlin using `ProcessBuilder` if you prefer CLI integration over direct library usage.
-
-## 8. Redeem coupons in TCB after discount application
+## 7. Redeem coupons in TCB after discount application
 
 After your retailer system applies the discount, it should redeem the applied coupons in TCB.
 
@@ -327,9 +294,12 @@ This method:
 - accepts a list of GS1 coupon codes
 - gets or reuses the cached TCB access token
 - calls the same `retailer/redeem` API
+- if more than `15` GS1s are provided, splits them into chunks of `15`
+- sends those redeem calls in parallel for faster network performance
+- merges the chunk responses into one JSON response
 - returns the raw JSON response body from TCB
 - does not send the `pre_process` field
-- generates one `client_txn_id` per redemption request
+- generates one `client_txn_id` per chunked redemption request
 - reuses that same `client_txn_id` across retries for idempotency
 
 Kotlin example:
@@ -352,17 +322,17 @@ fun main() {
 }
 ```
 
-## 9. Dependency note
+## 8. Dependency note
 
-For direct `java -jar` usage, prefer:
+For application integration, use:
 
 ```bash
 target/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
-That fat JAR already includes dependencies.
+That fat JAR already includes dependencies for embedding in your Kotlin project.
 
-## 10. Rollback redeemed coupons in TCB
+## 9. Rollback redeemed coupons in TCB
 
 If your retailer needs to reverse previously redeemed coupons, use:
 
