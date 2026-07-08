@@ -358,6 +358,12 @@ public class BasketValidationServiceRunner {
 
 			String inputJson =
 					row.getCell(5).getStringCellValue().trim();
+			
+			String expectedJson = "";
+
+			if (row.getCell(7) != null) {
+			    expectedJson = row.getCell(7).getStringCellValue().trim();
+			}
 
 			processed++;
 
@@ -371,6 +377,43 @@ public class BasketValidationServiceRunner {
 
 				ValidationResult result =
 						BasketValidator.validateBasketHelper(input);
+				String actualJson =
+				        mapper.writerWithDefaultPrettyPrinter()
+				                .writeValueAsString(result.basketValidationOutput);
+
+				JsonNode expectedNode = mapper.readTree(expectedJson);
+				JsonNode actualNode = mapper.readTree(actualJson);
+
+				if (!expectedNode.equals(actualNode)) {
+
+				    failed++;
+				    failedRows.add(rowNum + 1);
+
+				    logger.info("===========================================================");
+				    logger.info("➡️ Processing row: " + (rowNum + 1));
+				    logger.info("===========================================================");
+
+				    logger.info("");
+				    logger.info("Scenario :");
+				    logger.info(scenario);
+
+				    logger.info("");
+				    logger.error("❌ VALIDATION FAILED");
+
+				    logger.info("");
+				    logger.info("Basket Validation Input:");
+				    logger.info(inputJson);
+
+				    logger.info("");
+				    logger.info("Expected Output:");
+				    logger.info(expectedJson);
+
+				    logger.info("");
+				    logger.info("Actual Output:");
+				    logger.info(actualJson);
+
+				    continue;
+				}
 
 				List<String> gs1List = new ArrayList<>();
 
@@ -478,6 +521,7 @@ public class BasketValidationServiceRunner {
 				    
 				    logger.info("");
 				    logger.info("✅ PASS");
+				    logger.info("");
 				}
 			}
 			catch (Exception e) {
