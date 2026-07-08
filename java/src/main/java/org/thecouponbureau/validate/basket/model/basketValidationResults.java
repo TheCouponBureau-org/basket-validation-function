@@ -40,6 +40,7 @@ public class basketValidationResults {
         public String tcbBaseUrl;
         public String tcbAccessKey;
         public String tcbSecretKey;
+        public Boolean enableLogging;
     }
 
     // =====================================================

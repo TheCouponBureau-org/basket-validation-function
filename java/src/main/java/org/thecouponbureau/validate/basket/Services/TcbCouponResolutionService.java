@@ -30,7 +30,8 @@ public class TcbCouponResolutionService {
             String baseUrl,
             String accessKey,
             String accessToken,
-            List<Coupon> coupons) {
+            List<Coupon> coupons,
+            boolean enableLogging) {
 
         if (coupons == null || coupons.isEmpty()) {
             return coupons;
@@ -53,7 +54,7 @@ public class TcbCouponResolutionService {
         List<CompletableFuture<BucketResolution>> futures = new ArrayList<>();
 
         for (CouponBucket bucket : buckets) {
-            futures.add(requestRedeemAsync(baseUrl, accessKey, accessToken, bucket));
+            futures.add(requestRedeemAsync(baseUrl, accessKey, accessToken, bucket, enableLogging));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -97,6 +98,8 @@ public class TcbCouponResolutionService {
                 flattenedCoupons.add(item.coupon);
             }
         }
+
+        logResolvedCoupons(flattenedCoupons, enableLogging);
 
         return flattenedCoupons;
     }
@@ -168,7 +171,8 @@ public class TcbCouponResolutionService {
             String baseUrl,
             String accessKey,
             String accessToken,
-            CouponBucket bucket) {
+            CouponBucket bucket,
+            boolean enableLogging) {
 
         try {
             RedeemRequest payload = new RedeemRequest();
@@ -186,6 +190,8 @@ public class TcbCouponResolutionService {
                     accessKey,
                     accessToken,
                     MAPPER.writeValueAsString(payload));
+
+            logRedeemRequest(request.uri().toString(), payload, bucket, enableLogging);
 
             return CompletableFuture.supplyAsync(() ->
                     TcbApiService.sendWithRetry(request, "retailer/redeem"))
@@ -333,6 +339,69 @@ public class TcbCouponResolutionService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static void logRedeemRequest(
+            String url,
+            RedeemRequest payload,
+            CouponBucket bucket,
+            boolean enableLogging) {
+
+        if (!enableLogging) {
+            return;
+        }
+
+        try {
+            Map<String, Object> logData = new HashMap<>();
+            logData.put("url", url);
+            logData.put("single_coupon_bucket", bucket.singleCouponBucket);
+            logData.put("gs1s", payload.gs1s);
+            logData.put("pre_process", payload.preProcess);
+            logData.put("include_check_digit", payload.includeCheckDigit);
+            logData.put("no_purchase_requirement", payload.noPurchaseRequirement);
+            logData.put("offline", payload.offline);
+
+            System.out.println("[TcbCouponResolutionService] Redeem request:");
+            System.out.println(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logData));
+        } catch (Exception exception) {
+            System.err.println("[TcbCouponResolutionService] Unable to log redeem request: "
+                    + exception.getMessage());
+        }
+    }
+
+    private static void logResolvedCoupons(
+            List<Coupon> resolvedCoupons,
+            boolean enableLogging) {
+
+        if (!enableLogging) {
+            return;
+        }
+
+        try {
+            Map<String, Object> logData = new HashMap<>();
+            logData.put("coupons", resolvedCoupons);
+            logData.put("coupon_gs1_order", extractCouponGs1Order(resolvedCoupons));
+
+            System.out.println("[TcbCouponResolutionService] Resolved coupons output:");
+            System.out.println(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logData));
+        } catch (Exception exception) {
+            System.err.println("[TcbCouponResolutionService] Unable to log resolved coupons: "
+                    + exception.getMessage());
+        }
+    }
+
+    private static List<String> extractCouponGs1Order(List<Coupon> resolvedCoupons) {
+        List<String> couponGs1Order = new ArrayList<>();
+
+        if (resolvedCoupons == null) {
+            return couponGs1Order;
+        }
+
+        for (Coupon coupon : resolvedCoupons) {
+            couponGs1Order.add(coupon == null ? null : coupon.gs1);
+        }
+
+        return couponGs1Order;
     }
 
     private static class CouponRef {

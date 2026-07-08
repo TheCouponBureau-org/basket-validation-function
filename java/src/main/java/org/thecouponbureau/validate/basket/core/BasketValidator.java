@@ -3,6 +3,9 @@ package org.thecouponbureau.validate.basket.core;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+
 import org.thecouponbureau.validate.basket.Services.BasketReducerService;
 import org.thecouponbureau.validate.basket.Services.TcbCouponResolutionService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
@@ -36,6 +39,9 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Validat
  * 6. Accumulate results
  */
 public class BasketValidator {
+
+    private static final ObjectMapper LOG_MAPPER = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
     // =====================================================
     // Constants
@@ -73,6 +79,9 @@ public class BasketValidator {
         basketValidationOutput.appliedCoupons = new ArrayList<>();
 
         List<Coupon> couponsToProcess = basketValidationInput.coupons;
+        boolean enableLogging = Boolean.TRUE.equals(basketValidationInput.enableLogging);
+
+        logValidationInput(basketValidationInput, enableLogging);
 
         if (hasCouponsToResolve(couponsToProcess)
                 && hasTcbCredentials(basketValidationInput)) {
@@ -86,7 +95,8 @@ public class BasketValidator {
                     basketValidationInput.tcbBaseUrl,
                     basketValidationInput.tcbAccessKey,
                     accessToken,
-                    couponsToProcess
+                    couponsToProcess,
+                    enableLogging
             );
 
             basketValidationInput.coupons = couponsToProcess;
@@ -264,6 +274,39 @@ public class BasketValidator {
                 && !isBlank(input.tcbBaseUrl)
                 && !isBlank(input.tcbAccessKey)
                 && !isBlank(input.tcbSecretKey);
+    }
+
+    private static void logValidationInput(
+            BasketValidationInput basketValidationInput,
+            boolean enableLogging) {
+
+        if (!enableLogging || basketValidationInput == null) {
+            return;
+        }
+
+        try {
+            BasketValidationInput logInput = new BasketValidationInput();
+            logInput.basket = basketValidationInput.basket;
+            logInput.coupons = basketValidationInput.coupons;
+            logInput.tcbBaseUrl = basketValidationInput.tcbBaseUrl;
+            logInput.tcbAccessKey = redactValue(basketValidationInput.tcbAccessKey);
+            logInput.tcbSecretKey = redactValue(basketValidationInput.tcbSecretKey);
+            logInput.enableLogging = basketValidationInput.enableLogging;
+
+            System.out.println("[BasketValidator] Validation input:");
+            System.out.println(LOG_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logInput));
+        } catch (Exception exception) {
+            System.err.println("[BasketValidator] Unable to log validation input: "
+                    + exception.getMessage());
+        }
+    }
+
+    private static String redactValue(String value) {
+        if (isBlank(value)) {
+            return value;
+        }
+
+        return "REDACTED";
     }
 
     private static boolean isBlank(String value) {
