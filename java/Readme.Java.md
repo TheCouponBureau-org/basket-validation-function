@@ -291,6 +291,7 @@ When `enableLogging` is `true`, the validator prints pretty JSON logs for:
 
 - the input payload before validation starts
 - each TCB resolution redeem request payload used to fetch missing `purchase_requirement`
+- each TCB resolution redeem response body returned by the API
 - the resolved coupon JSON after `purchase_requirement` and `base_gs1` are populated
 
 The resolved output log also prints `coupon_gs1_order` so you can verify that coupon order is still maintained based on the input `gs1` values.

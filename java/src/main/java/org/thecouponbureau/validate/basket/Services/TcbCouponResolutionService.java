@@ -195,7 +195,7 @@ public class TcbCouponResolutionService {
 
             return CompletableFuture.supplyAsync(() ->
                     TcbApiService.sendWithRetry(request, "retailer/redeem"))
-                    .thenApply(response -> parseResolutionResponse(response, bucket));
+                    .thenApply(response -> parseResolutionResponse(response, bucket, enableLogging));
 
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to serialize TCB redeem request.", exception);
@@ -204,7 +204,8 @@ public class TcbCouponResolutionService {
 
     private static BucketResolution parseResolutionResponse(
             HttpResponse<String> response,
-            CouponBucket bucket) {
+            CouponBucket bucket,
+            boolean enableLogging) {
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException(
@@ -212,6 +213,8 @@ public class TcbCouponResolutionService {
         }
 
         try {
+            logRedeemResponse(response.body(), enableLogging);
+
             RedeemResponse redeemResponse =
                     MAPPER.readValue(response.body(), RedeemResponse.class);
 
@@ -386,6 +389,24 @@ public class TcbCouponResolutionService {
             System.out.println(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logData));
         } catch (Exception exception) {
             System.err.println("[TcbCouponResolutionService] Unable to log resolved coupons: "
+                    + exception.getMessage());
+        }
+    }
+
+    private static void logRedeemResponse(
+            String responseBody,
+            boolean enableLogging) {
+
+        if (!enableLogging) {
+            return;
+        }
+
+        try {
+            Object prettyJson = MAPPER.readValue(responseBody, Object.class);
+            System.out.println("[TcbCouponResolutionService] Redeem response:");
+            System.out.println(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(prettyJson));
+        } catch (Exception exception) {
+            System.err.println("[TcbCouponResolutionService] Unable to log redeem response: "
                     + exception.getMessage());
         }
     }
