@@ -84,7 +84,14 @@ public class TcbCouponResolutionService {
                 continue;
             }
 
-            resolvedItems.sort(Comparator.comparingInt(item -> item.sequence));
+            Map<String, Integer> inputOrderByGs1 =
+                    buildInputOrderMap(expandRequestedGs1s(coupons.get(index).gs1));
+
+            resolvedItems.sort(
+                    Comparator.comparingInt(
+                                    (ResolvedCouponItem item) ->
+                                            resolveSortOrder(item, inputOrderByGs1))
+                            .thenComparingInt(item -> item.sequence));
 
             for (ResolvedCouponItem item : resolvedItems) {
                 flattenedCoupons.add(item.coupon);
@@ -289,6 +296,27 @@ public class TcbCouponResolutionService {
         resolvedCoupon.baseGs1 = redeemedCoupon.masterOfferFile;
         resolvedCoupon.purchaseRequirement = purchaseRequirement;
         return resolvedCoupon;
+    }
+
+    private static Map<String, Integer> buildInputOrderMap(List<String> requestedGs1s) {
+        Map<String, Integer> inputOrderByGs1 = new HashMap<>();
+
+        for (int index = 0; index < requestedGs1s.size(); index++) {
+            inputOrderByGs1.putIfAbsent(requestedGs1s.get(index), index);
+        }
+
+        return inputOrderByGs1;
+    }
+
+    private static int resolveSortOrder(
+            ResolvedCouponItem item,
+            Map<String, Integer> inputOrderByGs1) {
+
+        if (item == null || item.coupon == null || isBlank(item.coupon.gs1)) {
+            return Integer.MAX_VALUE;
+        }
+
+        return inputOrderByGs1.getOrDefault(item.coupon.gs1, item.sequence);
     }
 
     private static String normalizeBaseUrl(String baseUrl) {
