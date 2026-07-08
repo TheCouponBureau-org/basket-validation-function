@@ -258,6 +258,12 @@ public class TcbCouponResolutionService {
                 RedeemedCoupon redeemedCoupon = redeemedByGs1.get(requestedCouponGs1.gs1);
 
                 if (redeemedCoupon == null) {
+                    redeemedCoupon = findMatchingRedeemedCoupon(
+                            requestedCouponGs1.gs1,
+                            redeemResponse.newlyRedeemed);
+                }
+
+                if (redeemedCoupon == null) {
                     continue;
                 }
 
@@ -307,6 +313,38 @@ public class TcbCouponResolutionService {
         return resolvedCoupon;
     }
 
+    static RedeemedCoupon findMatchingRedeemedCoupon(
+            String requestedGs1,
+            List<RedeemedCoupon> newlyRedeemed) {
+
+        if (isBlank(requestedGs1) || newlyRedeemed == null || newlyRedeemed.isEmpty()) {
+            return null;
+        }
+
+        for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
+            if (redeemedCoupon != null && requestedGs1.equals(redeemedCoupon.gs1)) {
+                return redeemedCoupon;
+            }
+        }
+
+        String requestedBaseGs1 = stripLastFourDigits(requestedGs1);
+        if (isBlank(requestedBaseGs1)) {
+            return null;
+        }
+
+        for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
+            if (redeemedCoupon == null || isBlank(redeemedCoupon.masterOfferFile)) {
+                continue;
+            }
+
+            if (requestedBaseGs1.equals(redeemedCoupon.masterOfferFile)) {
+                return redeemedCoupon;
+            }
+        }
+
+        return null;
+    }
+
     private static PurchaseRequirement resolvePurchaseRequirement(
             RedeemedCoupon redeemedCoupon,
             Map<String, PurchaseRequirement> masterOfferFiles) {
@@ -350,6 +388,14 @@ public class TcbCouponResolutionService {
         }
 
         return inputOrderByGs1;
+    }
+
+    private static String stripLastFourDigits(String gs1) {
+        if (isBlank(gs1) || gs1.length() <= 4) {
+            return null;
+        }
+
+        return gs1.substring(0, gs1.length() - 4);
     }
 
     private static int resolveSortOrder(
@@ -553,7 +599,7 @@ public class TcbCouponResolutionService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class RedeemedCoupon {
+    static class RedeemedCoupon {
         public String gs1;
         @JsonProperty("master_offer_file")
         public String masterOfferFile;
