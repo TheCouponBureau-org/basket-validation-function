@@ -49,15 +49,11 @@ Main classes:
 Example:
 
 ```java
-import java.util.ArrayList;
-import java.util.List;
-
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 public class Main {
@@ -74,24 +70,15 @@ public class Main {
         item2.quantity = 1;
         item2.unit = "item";
 
-        PurchaseRequirement requirement = new PurchaseRequirement();
-        requirement.primaryPurchaseGtins = List.of("037000930396", "037000934677");
-        requirement.primaryPurchaseRequirements = 2L;
-        requirement.primaryPurchaseReqCode = 0;
-        requirement.primaryPurchaseSaveValue = 100L;
-        requirement.saveValueCode = 0;
-
-        Coupon coupon = new Coupon();
+        InputCoupon coupon = new InputCoupon();
         coupon.gs1 = "8112009988459000019133924009755364";
-        coupon.baseGs1 = "811200998845900001";
-        coupon.purchaseRequirement = requirement;
 
         BasketValidationInput input = new BasketValidationInput();
-        input.basket = new ArrayList<>();
-        input.basket.add(item1);
-        input.basket.add(item2);
-        input.coupons = new ArrayList<>();
-        input.coupons.add(coupon);
+        input.basket = java.util.Arrays.asList(item1, item2);
+        input.coupons = java.util.Collections.singletonList(coupon);
+        input.tcbBaseUrl = "https://api.try.thecouponbureau.org/";
+        input.tcbAccessKey = "YOUR_ACCESS_KEY";
+        input.tcbSecretKey = "YOUR_SECRET_KEY";
 
         ValidationResult result = BasketValidator.validateBasketHelper(input);
 
@@ -109,7 +96,7 @@ The project uses Jackson `SNAKE_CASE`, so JSON like this maps correctly.
 This example shows the supported caller input shape:
 
 - each coupon object contains only `gs1`
-- `base_gs1` and `purchase_requirement` are internal fields populated by the SDK after TCB resolution and should not be supplied by the caller
+- internal resolved fields are populated by the SDK after TCB resolution and should not be supplied by the caller
 
 ```json
 {
@@ -203,7 +190,7 @@ public class Main {
 
 ## 5. If you want GS1-only coupon resolution
 
-The caller should send coupons with only `gs1`. The validator resolves `base_gs1` and `purchase_requirement` internally through TCB APIs.
+The caller should send coupons with only `gs1`. The validator resolves the internal coupon fields through TCB APIs.
 
 Set these optional fields on `BasketValidationInput` before calling:
 
@@ -234,7 +221,7 @@ When `enableLogging` is `true`, the validator prints pretty JSON logs for:
 - the input payload before validation starts
 - each TCB resolution redeem request payload used to fetch missing `purchase_requirement`
 - each TCB resolution redeem response body returned by the API
-- the resolved coupon JSON after `purchase_requirement` and `base_gs1` are populated
+- the resolved coupon JSON after internal coupon fields are populated
 
 The resolved output log also prints `coupon_gs1_order` so you can verify that coupon order is still maintained based on the input `gs1` values.
 

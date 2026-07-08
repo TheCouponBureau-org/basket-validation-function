@@ -59,8 +59,7 @@ Example:
 import org.thecouponbureau.validate.basket.core.BasketValidator
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
-import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon
-import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
 
 fun main() {
     val item1 = BasketItem().apply {
@@ -77,23 +76,16 @@ fun main() {
         unit = "item"
     }
 
-    val requirement = PurchaseRequirement().apply {
-        primaryPurchaseGtins = listOf("037000930396", "037000934677")
-        primaryPurchaseRequirements = 2L
-        primaryPurchaseReqCode = 0
-        primaryPurchaseSaveValue = 100L
-        saveValueCode = 0
-    }
-
-    val coupon = Coupon().apply {
+    val coupon = InputCoupon().apply {
         gs1 = "8112009988459000019133924009755364"
-        baseGs1 = "811200998845900001"
-        purchaseRequirement = requirement
     }
 
     val input = BasketValidationInput().apply {
         basket = mutableListOf(item1, item2)
         coupons = mutableListOf(coupon)
+        tcbBaseUrl = "https://api.try.thecouponbureau.org/"
+        tcbAccessKey = "YOUR_ACCESS_KEY"
+        tcbSecretKey = "YOUR_SECRET_KEY"
     }
 
     val result = BasketValidator.validateBasketHelper(input)
@@ -108,7 +100,7 @@ The Java models expect `snake_case` JSON when using Jackson.
 This example shows the supported caller input shape:
 
 - each coupon object contains only `gs1`
-- `base_gs1` and `purchase_requirement` are internal fields populated by the SDK after TCB resolution and should not be supplied by the caller
+- internal resolved fields are populated by the SDK after TCB resolution and should not be supplied by the caller
 
 Example JSON:
 
@@ -203,7 +195,7 @@ fun main() {
 
 ## 6. GS1-only coupon resolution from Kotlin
 
-The caller should send coupons with only `gs1`. The validator resolves `base_gs1` and `purchase_requirement` internally through TCB APIs.
+The caller should send coupons with only `gs1`. The validator resolves the internal coupon fields through TCB APIs.
 
 Set these optional fields before calling:
 
@@ -234,7 +226,7 @@ When `enableLogging` is `true`, the validator prints pretty JSON logs for:
 - the input payload before validation starts
 - each TCB resolution redeem request payload used to fetch missing `purchase_requirement`
 - each TCB resolution redeem response body returned by the API
-- the resolved coupon JSON after `purchase_requirement` and `base_gs1` are populated
+- the resolved coupon JSON after internal coupon fields are populated
 
 The resolved output log also prints `coupon_gs1_order` so you can verify that coupon order is still maintained based on the input `gs1` values.
 
