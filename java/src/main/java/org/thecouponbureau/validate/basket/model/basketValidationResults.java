@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
@@ -36,7 +37,7 @@ public class basketValidationResults {
      */
     public static class BasketValidationInput {
         public List<BasketItem> basket;
-        public List<Coupon> coupons;
+        public List<InputCoupon> coupons;
         public String tcbBaseUrl;
         public String tcbAccessKey;
         public String tcbSecretKey;
@@ -57,6 +58,15 @@ public class basketValidationResults {
 
         // True if some coupons could not be applied
         public boolean notAllCouponsConsumed;
+
+        // Present when validation fails before processing
+        public ValidationError error;
+    }
+
+    public static class ValidationError {
+        public String code;
+        public String message;
+        public Map<String, Object> details;
     }
 
     /**
@@ -106,6 +116,19 @@ public class basketValidationResults {
 
     /**
      * Coupon model
+     */
+    public static class InputCoupon {
+        public String gs1;
+        public Map<String, Object> additionalFields = new HashMap<>();
+
+        @JsonAnySetter
+        public void setAdditionalField(String key, Object value) {
+            additionalFields.put(key, value);
+        }
+    }
+
+    /**
+     * Internal resolved coupon model
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Coupon {

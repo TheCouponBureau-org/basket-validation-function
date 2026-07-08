@@ -2,6 +2,7 @@ package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -18,9 +19,11 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketI
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationOutput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.MeetsRequirementsResult;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ReduceBasketResult;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.UnitsToPurchaseHolder;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationError;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 /**
@@ -67,10 +70,11 @@ public class BasketValidator {
                 || basketValidationInput.basket == null
                 || basketValidationInput.coupons == null) {
 
-            ValidationResult result = new ValidationResult();
-            result.basketValidationOutput = defaultOutput;
-            result.notAllCouponsConsumed = false;
-            return result;
+            return buildErrorResult(
+                    defaultOutput,
+                    "INVALID_INPUT",
+                    "basket and coupons are required.",
+                    null);
         }
 
         // Initialize output
@@ -78,10 +82,20 @@ public class BasketValidator {
         basketValidationOutput.discountInCents = 0;
         basketValidationOutput.appliedCoupons = new ArrayList<>();
 
-        List<Coupon> couponsToProcess = basketValidationInput.coupons;
         boolean enableLogging = Boolean.TRUE.equals(basketValidationInput.enableLogging);
 
         logValidationInput(basketValidationInput, enableLogging);
+
+        ValidationError inputError = validateCouponInputs(basketValidationInput.coupons);
+        if (inputError != null) {
+            return buildErrorResult(
+                    defaultOutput,
+                    inputError.code,
+                    inputError.message,
+                    inputError.details);
+        }
+
+        List<Coupon> couponsToProcess = toInternalCoupons(basketValidationInput.coupons);
 
         if (hasCouponsToResolve(couponsToProcess)
                 && hasTcbCredentials(basketValidationInput)) {
@@ -98,8 +112,6 @@ public class BasketValidator {
                     couponsToProcess,
                     enableLogging
             );
-
-            basketValidationInput.coupons = couponsToProcess;
         }
 
         // Step 1: Normalize basket (merge duplicates)
@@ -236,7 +248,7 @@ public class BasketValidator {
                 
                 
                 if (newBasketUnits == 0
-                        && index < basketValidationInput.coupons.size()) {
+                        && index < couponsToProcess.size()) {
                     notAllCouponsConsumed = true;
                 }
             }
@@ -311,5 +323,90 @@ public class BasketValidator {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static List<Coupon> toInternalCoupons(List<InputCoupon> inputCoupons) {
+        List<Coupon> coupons = new ArrayList<>();
+
+        if (inputCoupons == null) {
+            return coupons;
+        }
+
+        for (InputCoupon inputCoupon : inputCoupons) {
+            Coupon coupon = new Coupon();
+            if (inputCoupon != null) {
+                coupon.gs1 = inputCoupon.gs1;
+            }
+            coupons.add(coupon);
+        }
+
+        return coupons;
+    }
+
+    private static ValidationError validateCouponInputs(List<InputCoupon> inputCoupons) {
+        if (inputCoupons == null) {
+            return buildValidationError(
+                    "INVALID_INPUT",
+                    "coupons are required.",
+                    null);
+        }
+
+        for (int index = 0; index < inputCoupons.size(); index++) {
+            InputCoupon inputCoupon = inputCoupons.get(index);
+
+            if (inputCoupon == null) {
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon entry cannot be null.",
+                        buildCouponIndexDetails(index));
+            }
+
+            if (isBlank(inputCoupon.gs1)) {
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon gs1 is required.",
+                        buildCouponIndexDetails(index));
+            }
+
+            if (inputCoupon.additionalFields != null && !inputCoupon.additionalFields.isEmpty()) {
+                Map<String, Object> details = buildCouponIndexDetails(index);
+                details.put("invalid_fields", new ArrayList<>(inputCoupon.additionalFields.keySet()));
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon input only supports gs1.",
+                        details);
+            }
+        }
+
+        return null;
+    }
+
+    private static Map<String, Object> buildCouponIndexDetails(int index) {
+        Map<String, Object> details = new java.util.HashMap<>();
+        details.put("coupon_index", index);
+        return details;
+    }
+
+    private static ValidationError buildValidationError(
+            String code,
+            String message,
+            Map<String, Object> details) {
+        ValidationError error = new ValidationError();
+        error.code = code;
+        error.message = message;
+        error.details = details;
+        return error;
+    }
+
+    private static ValidationResult buildErrorResult(
+            BasketValidationOutput defaultOutput,
+            String code,
+            String message,
+            Map<String, Object> details) {
+        ValidationResult result = new ValidationResult();
+        result.basketValidationOutput = defaultOutput;
+        result.notAllCouponsConsumed = false;
+        result.error = buildValidationError(code, message, details);
+        return result;
     }
 }

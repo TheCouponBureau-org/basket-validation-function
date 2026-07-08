@@ -106,10 +106,10 @@ If your application already works with JSON strings, deserialize into `BasketVal
 
 The project uses Jackson `SNAKE_CASE`, so JSON like this maps correctly.
 
-This example shows:
+This example shows the supported caller input shape:
 
-- one coupon with only `gs1` that can be resolved through TCB
-- one coupon that already includes `base_gs1` and `purchase_requirement`
+- each coupon object contains only `gs1`
+- `base_gs1` and `purchase_requirement` are internal fields populated by the SDK after TCB resolution and should not be supplied by the caller
 
 ```json
 {
@@ -138,36 +138,7 @@ This example shows:
       "gs1": "8112109988459000269133321426026193"
     },
     {
-      "gs1": "8112109988459000269133587761214614",
-      "base_gs1": "811210998845900026",
-      "purchase_requirement": {
-        "primary_purchase_gtins": [
-          "037000930396",
-          "037000934677",
-          "037000618737",
-          "037000758365"
-        ],
-        "second_purchase_gtins": [
-          "7106919588011",
-          "8952803493171",
-          "1305192154937"
-        ],
-        "third_purchase_gtins": [
-          "037000779681",
-          "037000523505",
-          "037000925033"
-        ],
-        "primary_purchase_save_value": 1,
-        "primary_purchase_requirements": 6,
-        "primary_purchase_req_code": 0,
-        "additional_purchase_rules_code": 2,
-        "second_purchase_requirements": 2,
-        "second_purchase_req_code": 0,
-        "third_purchase_requirements": 3,
-        "third_purchase_req_code": 0,
-        "save_value_code": 2,
-        "applies_to_which_item": 0
-      }
+      "gs1": "8112109988459000269133587761214614"
     }
   ]
 }
@@ -215,36 +186,7 @@ public class Main {
                       "gs1": "8112109988459000269133321426026193"
                     },
                     {
-                      "gs1": "8112109988459000269133587761214614",
-                      "base_gs1": "811210998845900026",
-                      "purchase_requirement": {
-                        "primary_purchase_gtins": [
-                          "037000930396",
-                          "037000934677",
-                          "037000618737",
-                          "037000758365"
-                        ],
-                        "second_purchase_gtins": [
-                          "7106919588011",
-                          "8952803493171",
-                          "1305192154937"
-                        ],
-                        "third_purchase_gtins": [
-                          "037000779681",
-                          "037000523505",
-                          "037000925033"
-                        ],
-                        "primary_purchase_save_value": 1,
-                        "primary_purchase_requirements": 6,
-                        "primary_purchase_req_code": 0,
-                        "additional_purchase_rules_code": 2,
-                        "second_purchase_requirements": 2,
-                        "second_purchase_req_code": 0,
-                        "third_purchase_requirements": 3,
-                        "third_purchase_req_code": 0,
-                        "save_value_code": 2,
-                        "applies_to_which_item": 0
-                      }
+                      "gs1": "8112109988459000269133587761214614"
                     }
                   ]
                 }
@@ -261,7 +203,7 @@ public class Main {
 
 ## 5. If you want GS1-only coupon resolution
 
-If a coupon only contains `gs1` and does not contain `base_gs1` or `purchase_requirement`, the validator can resolve it through TCB APIs.
+The caller should send coupons with only `gs1`. The validator resolves `base_gs1` and `purchase_requirement` internally through TCB APIs.
 
 Set these optional fields on `BasketValidationInput` before calling:
 
@@ -271,7 +213,7 @@ input.tcbAccessKey = "YOUR_ACCESS_KEY";
 input.tcbSecretKey = "YOUR_SECRET_KEY";
 ```
 
-If these are not provided, coupons missing `purchase_requirement` are ignored.
+If these are not provided, unresolved coupons are ignored because the SDK cannot fetch `purchase_requirement`.
 
 Example:
 
