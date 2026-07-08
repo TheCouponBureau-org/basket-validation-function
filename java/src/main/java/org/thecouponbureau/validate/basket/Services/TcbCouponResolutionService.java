@@ -294,7 +294,7 @@ public class TcbCouponResolutionService {
         }
 
         PurchaseRequirement purchaseRequirement =
-                masterOfferFiles.get(redeemedCoupon.masterOfferFile);
+                resolvePurchaseRequirement(redeemedCoupon, masterOfferFiles);
 
         if (purchaseRequirement == null) {
             return null;
@@ -305,6 +305,41 @@ public class TcbCouponResolutionService {
         resolvedCoupon.baseGs1 = redeemedCoupon.masterOfferFile;
         resolvedCoupon.purchaseRequirement = purchaseRequirement;
         return resolvedCoupon;
+    }
+
+    private static PurchaseRequirement resolvePurchaseRequirement(
+            RedeemedCoupon redeemedCoupon,
+            Map<String, PurchaseRequirement> masterOfferFiles) {
+
+        if (redeemedCoupon == null
+                || masterOfferFiles == null
+                || masterOfferFiles.isEmpty()
+                || isBlank(redeemedCoupon.gs1)
+                || isBlank(redeemedCoupon.masterOfferFile)) {
+            return null;
+        }
+
+        PurchaseRequirement purchaseRequirement =
+                masterOfferFiles.get(redeemedCoupon.masterOfferFile);
+
+        if (purchaseRequirement != null) {
+            return purchaseRequirement;
+        }
+
+        for (Map.Entry<String, PurchaseRequirement> entry : masterOfferFiles.entrySet()) {
+            String candidateBaseGs1 = entry.getKey();
+
+            if (isBlank(candidateBaseGs1)) {
+                continue;
+            }
+
+            if (redeemedCoupon.gs1.startsWith(candidateBaseGs1)
+                    && redeemedCoupon.masterOfferFile.startsWith(candidateBaseGs1)) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
     }
 
     private static Map<String, Integer> buildInputOrderMap(List<String> requestedGs1s) {
