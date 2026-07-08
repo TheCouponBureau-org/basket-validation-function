@@ -70,12 +70,15 @@ public class Main {
         item2.quantity = 1;
         item2.unit = "item";
 
-        InputCoupon coupon = new InputCoupon();
-        coupon.gs1 = "8112009988459000019133924009755364";
+        InputCoupon coupon1 = new InputCoupon();
+        coupon1.gs1 = "8112009988459000019133924009755364";
+
+        InputCoupon coupon2 = new InputCoupon();
+        coupon2.gs1 = "8112009988459000019133222024880382";
 
         BasketValidationInput input = new BasketValidationInput();
         input.basket = java.util.Arrays.asList(item1, item2);
-        input.coupons = java.util.Collections.singletonList(coupon);
+        input.coupons = java.util.Arrays.asList(coupon1, coupon2);
         input.tcbBaseUrl = "https://api.try.thecouponbureau.org/";
         input.tcbAccessKey = "YOUR_ACCESS_KEY";
         input.tcbSecretKey = "YOUR_SECRET_KEY";

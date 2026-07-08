@@ -76,13 +76,17 @@ fun main() {
         unit = "item"
     }
 
-    val coupon = InputCoupon().apply {
+    val coupon1 = InputCoupon().apply {
         gs1 = "8112009988459000019133924009755364"
+    }
+
+    val coupon2 = InputCoupon().apply {
+        gs1 = "8112009988459000019133222024880382"
     }
 
     val input = BasketValidationInput().apply {
         basket = mutableListOf(item1, item2)
-        coupons = mutableListOf(coupon)
+        coupons = mutableListOf(coupon1, coupon2)
         tcbBaseUrl = "https://api.try.thecouponbureau.org/"
         tcbAccessKey = "YOUR_ACCESS_KEY"
         tcbSecretKey = "YOUR_SECRET_KEY"
