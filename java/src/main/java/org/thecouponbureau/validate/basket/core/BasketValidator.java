@@ -96,6 +96,12 @@ public class BasketValidator {
         }
 
         List<Coupon> couponsToProcess = toInternalCoupons(basketValidationInput.coupons);
+        List<BasketItem> normalizedInputBasket =
+                BasketHelper.mergeBasketItems(basketValidationInput.basket);
+
+        couponsToProcess = filterApplicableInputCoupons(
+                normalizedInputBasket,
+                couponsToProcess);
 
         if (hasCouponsToResolve(couponsToProcess)
                 && hasTcbCredentials(basketValidationInput)) {
@@ -115,8 +121,7 @@ public class BasketValidator {
         }
 
         // Step 1: Normalize basket (merge duplicates)
-        List<BasketItem> newBasket =
-                BasketHelper.mergeBasketItems(basketValidationInput.basket);
+        List<BasketItem> newBasket = normalizedInputBasket;
 
         boolean notAllCouponsConsumed = false;
         int index = 0;
@@ -270,10 +275,7 @@ public class BasketValidator {
         }
 
         for (Coupon coupon : coupons) {
-            if (coupon != null
-                    && coupon.gs1 != null
-                    && coupon.baseGs1 == null
-                    && coupon.purchaseRequirement == null) {
+            if (coupon != null && coupon.gs1 != null) {
                 return true;
             }
         }
@@ -336,6 +338,7 @@ public class BasketValidator {
             Coupon coupon = new Coupon();
             if (inputCoupon != null) {
                 coupon.gs1 = inputCoupon.gs1;
+                coupon.purchaseRequirement = inputCoupon.purchaseRequirement;
             }
             coupons.add(coupon);
         }
@@ -373,12 +376,75 @@ public class BasketValidator {
                 details.put("invalid_fields", new ArrayList<>(inputCoupon.additionalFields.keySet()));
                 return buildValidationError(
                         "INVALID_COUPON_INPUT",
-                        "coupon input only supports gs1.",
+                        "coupon input only supports gs1 and optional purchase_requirement.",
                         details);
             }
         }
 
         return null;
+    }
+
+    private static List<Coupon> filterApplicableInputCoupons(
+            List<BasketItem> basket,
+            List<Coupon> coupons) {
+
+        List<Coupon> filteredCoupons = new ArrayList<>();
+
+        if (coupons == null) {
+            return filteredCoupons;
+        }
+
+        for (Coupon coupon : coupons) {
+            if (coupon == null) {
+                continue;
+            }
+
+            if (coupon.purchaseRequirement == null) {
+                filteredCoupons.add(coupon);
+                continue;
+            }
+
+            if (canCouponApplyToBasket(basket, coupon)) {
+                filteredCoupons.add(coupon);
+            }
+        }
+
+        return filteredCoupons;
+    }
+
+    private static boolean canCouponApplyToBasket(
+            List<BasketItem> basket,
+            Coupon coupon) {
+
+        if (basket == null || coupon == null || coupon.purchaseRequirement == null) {
+            return false;
+        }
+
+        long basketTotalPrice = 0L;
+        for (BasketItem item : basket) {
+            basketTotalPrice += BasketHelper.toCents(item.price) * item.quantity;
+        }
+
+        MeetsRequirementsResult meetsResult =
+                RequirementService.meetsRequirements(basket, coupon);
+
+        if (meetsResult == null || !meetsResult.status) {
+            return false;
+        }
+
+        boolean hasOnlyPrimaryPurchase =
+                meetsResult.unitsToPurchase2 == null
+                        && meetsResult.unitsToPurchase3 == null;
+
+        long discountInCents =
+                DiscountService.getDiscountInCents(
+                        coupon,
+                        meetsResult.basketItems,
+                        hasOnlyPrimaryPurchase,
+                        basketTotalPrice,
+                        new ArrayList<>());
+
+        return discountInCents > 0;
     }
 
     private static Map<String, Object> buildCouponIndexDetails(int index) {

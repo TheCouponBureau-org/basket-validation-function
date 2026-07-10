@@ -30,18 +30,7 @@ If you are using a local/manual setup, copy the fat JAR into your Kotlin project
 your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
-## 3. Kotlin compile/run with classpath
-
-Example using `kotlinc`:
-
-```bash
-kotlinc -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar" src/main/kotlin/Main.kt -d app.jar
-java -cp "app.jar:lib/basket-validator-1.0-SNAPSHOT-all.jar" MainKt
-```
-
-On Windows, use `;` instead of `:`.
-
-## 4. Call the validator directly from Kotlin
+## 3. Call the validator directly from Kotlin
 
 Main classes:
 
@@ -60,6 +49,7 @@ import org.thecouponbureau.validate.basket.core.BasketValidator
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
 
 fun main() {
     val item1 = BasketItem().apply {
@@ -78,6 +68,13 @@ fun main() {
 
     val coupon1 = InputCoupon().apply {
         gs1 = "8112009988459000019133924009755364"
+        purchaseRequirement = PurchaseRequirement().apply {
+            primaryPurchaseGtins = listOf("037000930396", "037000934677")
+            primaryPurchaseSaveValue = 100L
+            primaryPurchaseRequirements = 2L
+            primaryPurchaseReqCode = 0
+            saveValueCode = 0
+        }
     }
 
     val coupon2 = InputCoupon().apply {
@@ -97,14 +94,15 @@ fun main() {
 }
 ```
 
-## 5. JSON-string driven usage from Kotlin
+## 4. JSON-string driven usage from Kotlin
 
 The Java models expect `snake_case` JSON when using Jackson.
 
 This example shows the supported caller input shape:
 
-- each coupon object contains only `gs1`
-- internal resolved fields are populated by the SDK after TCB resolution and should not be supplied by the caller
+- each coupon object must contain `gs1`
+- each coupon object may also include optional `purchase_requirement`
+- `base_gs1` is internal and should not be supplied by the caller
 
 Example JSON:
 
@@ -132,7 +130,17 @@ Example JSON:
   ],
   "coupons": [
     {
-      "gs1": "8112109988459000269133321426026193"
+      "gs1": "8112109988459000269133321426026193",
+      "purchase_requirement": {
+        "primary_purchase_gtins": [
+          "037000930396",
+          "037000934677"
+        ],
+        "primary_purchase_save_value": 100,
+        "primary_purchase_requirements": 2,
+        "primary_purchase_req_code": 0,
+        "save_value_code": 0
+      }
     },
     {
       "gs1": "8112109988459000269133587761214614"
@@ -178,7 +186,17 @@ fun main() {
           ],
           "coupons": [
             {
-              "gs1": "8112109988459000269133321426026193"
+              "gs1": "8112109988459000269133321426026193",
+              "purchase_requirement": {
+                "primary_purchase_gtins": [
+                  "037000930396",
+                  "037000934677"
+                ],
+                "primary_purchase_save_value": 100,
+                "primary_purchase_requirements": 2,
+                "primary_purchase_req_code": 0,
+                "save_value_code": 0
+              }
             },
             {
               "gs1": "8112109988459000269133587761214614"
@@ -197,9 +215,32 @@ fun main() {
 }
 ```
 
-## 6. GS1-only coupon resolution from Kotlin
+## 5. Coupon resolution flow from Kotlin
 
-The caller should send coupons with only `gs1`. The validator resolves the internal coupon fields through TCB APIs.
+The caller must send `gs1` for every coupon. The caller may also send optional `purchase_requirement` for some coupons. The validator uses this flow:
+
+- first, coupons that already include `purchase_requirement` are checked against the basket
+- coupons that are not applicable are removed before any TCB call
+- then the remaining coupons are redeemed through TCB
+- the SDK updates the internal coupon fields from the TCB response
+- then final basket validation runs on the resolved coupon set
+
+```mermaid
+flowchart TD
+    A[Input basket and coupons] --> B{Coupon has input purchase_requirement?}
+    B -->|Yes| C[Validate coupon against basket]
+    C --> D{Applicable?}
+    D -->|No| E[Drop coupon before TCB call]
+    D -->|Yes| F[Keep coupon for next step]
+    B -->|No| F
+    F --> G{TCB credentials provided?}
+    G -->|No| H[Ignore unresolved coupons]
+    G -->|Yes| I[Redeem remaining coupons through TCB]
+    I --> J[Fetch purchase_requirement from TCB response]
+    J --> K[Update internal coupon fields]
+    K --> L[Validate basket with resolved coupon set]
+    H --> L
+```
 
 Set these optional fields before calling:
 
@@ -236,7 +277,7 @@ The resolved output log also prints `coupon_gs1_order` so you can verify that co
 
 The input log redacts `tcbAccessKey` and `tcbSecretKey`.
 
-## 7. Redeem coupons in TCB after discount application
+## 6. Redeem coupons in TCB after discount application
 
 After your retailer system applies the discount, it should redeem the applied coupons in TCB.
 
@@ -279,7 +320,7 @@ fun main() {
 
 Note: `enableLogging` only affects validation-time GS1 resolution inside `BasketValidator.validateBasketHelper(...)`. It does not change the output of `TcbCouponRedeemService.redeemCoupons(...)`.
 
-## 8. Dependency note
+## 7. Dependency note
 
 For application integration, use:
 
@@ -289,7 +330,7 @@ target/basket-validator-1.0-SNAPSHOT-all.jar
 
 That fat JAR already includes dependencies for embedding in your Kotlin project.
 
-## 9. Rollback redeemed coupons in TCB
+## 8. Rollback redeemed coupons in TCB
 
 If your retailer needs to reverse previously redeemed coupons, use:
 

@@ -25,17 +25,6 @@ If your project is not using Maven publishing, copy the fat JAR into your projec
 your-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
-Then add it to your classpath when compiling and running.
-
-Example:
-
-```bash
-javac -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar" src/com/example/Main.java
-java -cp "lib/basket-validator-1.0-SNAPSHOT-all.jar:src" com.example.Main
-```
-
-On Windows use `;` instead of `:` in the classpath.
-
 ## 3. Use it from Java code
 
 Main classes:
@@ -54,6 +43,7 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 public class Main {
@@ -72,6 +62,13 @@ public class Main {
 
         InputCoupon coupon1 = new InputCoupon();
         coupon1.gs1 = "8112009988459000019133924009755364";
+        coupon1.purchaseRequirement = new PurchaseRequirement();
+        coupon1.purchaseRequirement.primaryPurchaseGtins =
+                java.util.Arrays.asList("037000930396", "037000934677");
+        coupon1.purchaseRequirement.primaryPurchaseSaveValue = 100L;
+        coupon1.purchaseRequirement.primaryPurchaseRequirements = 2L;
+        coupon1.purchaseRequirement.primaryPurchaseReqCode = 0;
+        coupon1.purchaseRequirement.saveValueCode = 0;
 
         InputCoupon coupon2 = new InputCoupon();
         coupon2.gs1 = "8112009988459000019133222024880382";
@@ -98,8 +95,9 @@ The project uses Jackson `SNAKE_CASE`, so JSON like this maps correctly.
 
 This example shows the supported caller input shape:
 
-- each coupon object contains only `gs1`
-- internal resolved fields are populated by the SDK after TCB resolution and should not be supplied by the caller
+- each coupon object must contain `gs1`
+- each coupon object may also include optional `purchase_requirement`
+- `base_gs1` is internal and should not be supplied by the caller
 
 ```json
 {
@@ -125,7 +123,17 @@ This example shows the supported caller input shape:
   ],
   "coupons": [
     {
-      "gs1": "8112109988459000269133321426026193"
+      "gs1": "8112109988459000269133321426026193",
+      "purchase_requirement": {
+        "primary_purchase_gtins": [
+          "037000930396",
+          "037000934677"
+        ],
+        "primary_purchase_save_value": 100,
+        "primary_purchase_requirements": 2,
+        "primary_purchase_req_code": 0,
+        "save_value_code": 0
+      }
     },
     {
       "gs1": "8112109988459000269133587761214614"
@@ -173,7 +181,17 @@ public class Main {
                   ],
                   "coupons": [
                     {
-                      "gs1": "8112109988459000269133321426026193"
+                      "gs1": "8112109988459000269133321426026193",
+                      "purchase_requirement": {
+                        "primary_purchase_gtins": [
+                          "037000930396",
+                          "037000934677"
+                        ],
+                        "primary_purchase_save_value": 100,
+                        "primary_purchase_requirements": 2,
+                        "primary_purchase_req_code": 0,
+                        "save_value_code": 0
+                      }
                     },
                     {
                       "gs1": "8112109988459000269133587761214614"
@@ -191,9 +209,32 @@ public class Main {
 }
 ```
 
-## 5. If you want GS1-only coupon resolution
+## 5. Coupon resolution flow
 
-The caller should send coupons with only `gs1`. The validator resolves the internal coupon fields through TCB APIs.
+The caller must send `gs1` for every coupon. The caller may also send optional `purchase_requirement` for some coupons. The validator uses this flow:
+
+- first, coupons that already include `purchase_requirement` are checked against the basket
+- coupons that are not applicable are removed before any TCB call
+- then the remaining coupons are redeemed through TCB
+- the SDK updates the internal coupon fields from the TCB response
+- then final basket validation runs on the resolved coupon set
+
+```mermaid
+flowchart TD
+    A[Input basket and coupons] --> B{Coupon has input purchase_requirement?}
+    B -->|Yes| C[Validate coupon against basket]
+    C --> D{Applicable?}
+    D -->|No| E[Drop coupon before TCB call]
+    D -->|Yes| F[Keep coupon for next step]
+    B -->|No| F
+    F --> G{TCB credentials provided?}
+    G -->|No| H[Ignore unresolved coupons]
+    G -->|Yes| I[Redeem remaining coupons through TCB]
+    I --> J[Fetch purchase_requirement from TCB response]
+    J --> K[Update internal coupon fields]
+    K --> L[Validate basket with resolved coupon set]
+    H --> L
+```
 
 Set these optional fields on `BasketValidationInput` before calling:
 

@@ -163,8 +163,7 @@ public class TcbCouponResolutionService {
     private static boolean needsResolution(Coupon coupon) {
         return coupon != null
                 && !isBlank(coupon.gs1)
-                && coupon.baseGs1 == null
-                && coupon.purchaseRequirement == null;
+                && coupon.baseGs1 == null;
     }
 
     private static CompletableFuture<BucketResolution> requestRedeemAsync(

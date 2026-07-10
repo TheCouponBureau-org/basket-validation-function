@@ -119,6 +119,7 @@ public class basketValidationResults {
      */
     public static class InputCoupon {
         public String gs1;
+        public PurchaseRequirement purchaseRequirement;
         public Map<String, Object> additionalFields = new HashMap<>();
 
         @JsonAnySetter
