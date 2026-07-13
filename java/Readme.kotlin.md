@@ -125,6 +125,62 @@ Local rejection examples before token fetch:
 | `8112009988459000139133621151540206` | `base_gs1 = 811200998845900013` needs spend across chips and dip and soda; this basket does not satisfy all groups |
 | `8112009988459000089133401940529627` | `base_gs1 = 811200998845900008` needs 5 items from A and 2 free from B; this basket does not satisfy the quantity rule |
 
+Call `validateBasketHelper(...)` one coupon at a time in this step.
+
+Important:
+
+- Do **not** set `tcbBaseUrl`
+- Do **not** set `tcbAccessKey`
+- Do **not** set `tcbAccessToken`
+
+That makes `validateBasketHelper(...)` run as a local-only validation pass using only the basket and the locally loaded `purchase_requirement`.
+
+Request:
+
+```kotlin
+import org.thecouponbureau.validate.basket.core.BasketValidator
+import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+
+val locallyEligibleCoupons = mutableListOf<InputCoupon>()
+
+for (coupon in coupons) {
+    val localInput = BasketValidationInput().apply {
+        this.basket = basket
+        this.coupons = mutableListOf(coupon)
+    }
+
+    val localResult = BasketValidator.validateBasketHelper(localInput)
+
+    if (localResult.error != null) {
+        continue
+    }
+
+    if (localResult.basketValidationOutput != null
+        && localResult.basketValidationOutput.discountInCents > 0
+    ) {
+        locallyEligibleCoupons.add(coupon)
+    }
+}
+```
+
+Response:
+
+```json
+{
+  "eligible_coupon_gs1s": [
+    "8112009988459000019133924009755364",
+    "8112009988459000039133772240739897",
+    "8112009988459000049133939957096441"
+  ],
+  "rejected_coupon_gs1s": [
+    "8112009988459000199133935966961409",
+    "8112009988459000139133621151540206",
+    "8112009988459000089133401940529627"
+  ]
+}
+```
+
 Coupons kept after local filtering for the second pass:
 
 - `8112009988459000019133924009755364`
@@ -174,12 +230,6 @@ val basket = mutableListOf(
     }
 )
 
-val keptCouponGs1s = listOf(
-    "8112009988459000019133924009755364",
-    "8112009988459000039133772240739897",
-    "8112009988459000049133939957096441"
-)
-
 val resolvedBaseGs1ByCoupon = mapOf(
     "8112009988459000019133924009755364" to "811200998845900001",
     "8112009988459000039133772240739897" to "811200998845900003",
@@ -188,7 +238,8 @@ val resolvedBaseGs1ByCoupon = mapOf(
 
 val purchaseRequirementDb: Map<String, PurchaseRequirement> = loadPurchaseRequirementDb()
 
-val coupons = keptCouponGs1s.map { gs1 ->
+val coupons = locallyEligibleCoupons.map { localCoupon ->
+    val gs1 = localCoupon.gs1
     InputCoupon().apply {
         this.gs1 = gs1
         purchaseRequirement = purchaseRequirementDb[resolvedBaseGs1ByCoupon[gs1]]
