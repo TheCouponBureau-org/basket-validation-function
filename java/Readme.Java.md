@@ -1,5 +1,7 @@
 # Java integration flow
 
+![Integration Flow](flow.png)
+
 ## 1. Build the JAR
 
 From the `java/` folder:
