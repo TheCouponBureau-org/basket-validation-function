@@ -277,7 +277,45 @@ The resolved output log also prints `coupon_gs1_order` so you can verify that co
 
 The input log redacts `tcbAccessKey` and `tcbSecretKey`.
 
-## 6. Redeem coupons in TCB after discount application
+## 6. Parse scanned GS1s into serialized GS1 + base GS1
+
+Use:
+
+- `TcbScannedGs1Service.parseScannedGs1s(...)`
+
+This method:
+
+- accepts a list of scanned GS1 strings
+- parses consumer serialized data strings locally when possible
+- returns `gs1` and `base_gs1`
+- if the scanned code is a `16` digit code, or not a consumer serialized data string, calls TCB `retailer/redeem`
+- uses `newly_redeemed` from the TCB response
+- returns only the serialized `gs1` and associated `base_gs1`
+- does not return `purchase_requirement`
+
+Kotlin example:
+
+```kotlin
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
+
+fun main() {
+    val resolved = TcbScannedGs1Service.parseScannedGs1s(
+        "https://api.try.thecouponbureau.org/",
+        "YOUR_ACCESS_KEY",
+        "YOUR_SECRET_KEY",
+        listOf(
+            "8112209988459000329165266614604064",
+            "8112209988459000340001"
+        )
+    )
+
+    resolved.forEach { item ->
+        println("${item.gs1} -> ${item.baseGs1}")
+    }
+}
+```
+
+## 7. Redeem coupons in TCB after discount application
 
 After your retailer system applies the discount, it should redeem the applied coupons in TCB.
 
@@ -320,7 +358,7 @@ fun main() {
 
 Note: `enableLogging` only affects validation-time GS1 resolution inside `BasketValidator.validateBasketHelper(...)`. It does not change the output of `TcbCouponRedeemService.redeemCoupons(...)`.
 
-## 7. Dependency note
+## 8. Dependency note
 
 For application integration, use:
 
@@ -330,7 +368,7 @@ target/basket-validator-1.0-SNAPSHOT-all.jar
 
 That fat JAR already includes dependencies for embedding in your Kotlin project.
 
-## 8. Rollback redeemed coupons in TCB
+## 9. Rollback redeemed coupons in TCB
 
 If your retailer needs to reverse previously redeemed coupons, use:
 

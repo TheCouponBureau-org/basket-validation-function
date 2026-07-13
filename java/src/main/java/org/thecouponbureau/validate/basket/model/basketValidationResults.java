@@ -115,7 +115,14 @@ public class basketValidationResults {
     }
 
     /**
-     * Coupon model
+     * External coupon input model.
+     *
+     * Callers must always provide gs1. purchaseRequirement is optional:
+     * if present, the validator can pre-check the basket and drop clearly
+     * inapplicable coupons before any TCB redeem call is made.
+     *
+     * Any other coupon fields are captured in additionalFields so the validator
+     * can reject them explicitly and return a structured input error.
      */
     public static class InputCoupon {
         public String gs1;
@@ -129,7 +136,10 @@ public class basketValidationResults {
     }
 
     /**
-     * Internal resolved coupon model
+     * Internal coupon model used after input normalization and/or TCB resolution.
+     *
+     * baseGs1 is intentionally internal. It is derived from the TCB redeem
+     * response and is not part of the supported external input contract.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Coupon {

@@ -95,14 +95,22 @@ public class BasketValidator {
                     inputError.details);
         }
 
+        // Convert the external input contract into the internal coupon model.
+        // At this point coupons may or may not already include purchaseRequirement.
         List<Coupon> couponsToProcess = toInternalCoupons(basketValidationInput.coupons);
         List<BasketItem> normalizedInputBasket =
                 BasketHelper.mergeBasketItems(basketValidationInput.basket);
 
+        // Coupons that already came with purchaseRequirement can be screened
+        // immediately. This avoids unnecessary TCB calls for coupons that can
+        // never apply to the current basket.
         couponsToProcess = filterApplicableInputCoupons(
                 normalizedInputBasket,
                 couponsToProcess);
 
+        // The remaining coupons are redeemed through TCB so the SDK can refresh
+        // or populate the internal purchaseRequirement/baseGs1 fields from the
+        // source of truth before final validation is run.
         if (hasCouponsToResolve(couponsToProcess)
                 && hasTcbCredentials(basketValidationInput)) {
             String accessToken = TcbTokenService.getAccessToken(
@@ -371,6 +379,8 @@ public class BasketValidator {
                         buildCouponIndexDetails(index));
             }
 
+            // Only gs1 and purchaseRequirement are part of the public coupon
+            // input contract. Everything else is rejected before processing.
             if (inputCoupon.additionalFields != null && !inputCoupon.additionalFields.isEmpty()) {
                 Map<String, Object> details = buildCouponIndexDetails(index);
                 details.put("invalid_fields", new ArrayList<>(inputCoupon.additionalFields.keySet()));
@@ -404,6 +414,9 @@ public class BasketValidator {
                 continue;
             }
 
+            // Keep only coupons that can currently apply to the basket.
+            // Non-applicable input coupons are intentionally removed here so
+            // they do not participate in the later TCB resolution step.
             if (canCouponApplyToBasket(basket, coupon)) {
                 filteredCoupons.add(coupon);
             }
@@ -420,6 +433,9 @@ public class BasketValidator {
             return false;
         }
 
+        // This mirrors the early validation rules without consuming basket
+        // state. It is only used as a prefilter for coupons that already came
+        // with purchaseRequirement in the input payload.
         long basketTotalPrice = 0L;
         for (BasketItem item : basket) {
             basketTotalPrice += BasketHelper.toCents(item.price) * item.quantity;

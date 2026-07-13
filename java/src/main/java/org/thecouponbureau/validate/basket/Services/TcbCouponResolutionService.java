@@ -257,6 +257,9 @@ public class TcbCouponResolutionService {
                 RedeemedCoupon redeemedCoupon = redeemedByGs1.get(requestedCouponGs1.gs1);
 
                 if (redeemedCoupon == null) {
+                    // Some caller inputs use a shortened bundle-style GS1.
+                    // In that case TCB returns the full coupon GS1 plus a
+                    // master_offer_file that matches the input GS1 prefix.
                     redeemedCoupon = findMatchingRedeemedCoupon(
                             requestedCouponGs1.gs1,
                             redeemResponse.newlyRedeemed);
@@ -331,6 +334,9 @@ public class TcbCouponResolutionService {
             return null;
         }
 
+        // Fallback match for bundle-like caller input such as XXXXX...0001.
+        // If the input GS1 minus its last 4 digits equals the TCB
+        // master_offer_file, we treat that redeem response as the match.
         for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
             if (redeemedCoupon == null || isBlank(redeemedCoupon.masterOfferFile)) {
                 continue;
@@ -363,6 +369,9 @@ public class TcbCouponResolutionService {
             return purchaseRequirement;
         }
 
+        // Defensive fallback for cases where the MOF map key and the returned
+        // coupon fields still line up by prefix, even if the direct map lookup
+        // did not hit exactly.
         for (Map.Entry<String, PurchaseRequirement> entry : masterOfferFiles.entrySet()) {
             String candidateBaseGs1 = entry.getKey();
 
