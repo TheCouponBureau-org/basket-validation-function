@@ -21,7 +21,6 @@ public class TcbScannedGs1Service {
     private static final int BASE_GS1_LENGTH = 18;
     private static final int REDEEM_CHUNK_SIZE = 15;
     private static final int SINGLE_REDEEM_CODE_LENGTH = 16;
-    private static final int SINGLE_REDEEM_SCAN_THRESHOLD = 40;
     private static final String CONSUMER_SERIALIZED_PREFIX = "8112";
 
     public static List<SerializedGs1Data> parseScannedGs1s(
@@ -33,7 +32,29 @@ public class TcbScannedGs1Service {
         validateInputs(baseUrl, accessKey, accessToken, scannedGs1s);
 
         List<SerializedGs1Data> resolvedGs1s = new ArrayList<>();
-        List<List<String>> chunks = buildRedeemBatches(scannedGs1s);
+        List<List<String>> chunks = new ArrayList<>();
+        for (String scannedGs1 : scannedGs1s) {
+            if (isBlank(scannedGs1)) {
+                continue;
+            }
+
+            String normalizedGs1 = scannedGs1.trim();
+            List<SerializedGs1Data> locallyParsed = tryParseConsumerSerializedGs1s(normalizedGs1);
+
+            if (!locallyParsed.isEmpty()) {
+                resolvedGs1s.addAll(locallyParsed);
+                continue;
+            }
+
+            if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
+                chunks.add(List.of(normalizedGs1));
+            }
+        }
+
+        if (chunks.isEmpty()) {
+            return resolvedGs1s;
+        }
+
         List<CompletableFuture<List<SerializedGs1Data>>> futures = new ArrayList<>();
 
         for (List<String> chunk : chunks) {
@@ -51,7 +72,6 @@ public class TcbScannedGs1Service {
 
     static List<List<String>> buildRedeemBatches(List<String> scannedGs1s) {
         List<List<String>> batches = new ArrayList<>();
-        List<String> groupedCandidates = new ArrayList<>();
 
         for (String scannedGs1 : scannedGs1s) {
             if (isBlank(scannedGs1)) {
@@ -60,16 +80,14 @@ public class TcbScannedGs1Service {
 
             String normalizedGs1 = scannedGs1.trim();
 
-            if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH
-                    || normalizedGs1.length() > SINGLE_REDEEM_SCAN_THRESHOLD) {
-                batches.add(List.of(normalizedGs1));
+            if (!tryParseConsumerSerializedGs1s(normalizedGs1).isEmpty()) {
                 continue;
             }
 
-            groupedCandidates.add(normalizedGs1);
+            if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
+                batches.add(List.of(normalizedGs1));
+            }
         }
-
-        batches.addAll(chunkGs1s(groupedCandidates, REDEEM_CHUNK_SIZE));
         return batches;
     }
 

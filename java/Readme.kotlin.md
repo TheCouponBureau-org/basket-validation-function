@@ -279,6 +279,263 @@ fun main() {
 
 That cache file is application-owned. The SDK does not reuse it automatically. TCB states the token is valid for 24 hours, so your application can reload this file and reuse `x-access-token` until your own expiry policy says to refresh it.
 
+### POS / SCO walkthrough
+
+This walkthrough uses real serialized coupon examples and `base_gs1` values from `java/POS_Basket_Validation_UseCases.xlsx`.
+
+The `16`-digit fetch code below is illustrative. The workbook contains serialized coupon examples and offer data, but not the fetch-code-to-coupon mapping returned by TCB.
+
+#### Step 1. Customer scans four serialized coupons and one fetch code
+
+| Scan order | Type | Scanned value |
+| --- | --- | --- |
+| 1 | Serialized coupon | `8112009988459000019133924009755364` |
+| 2 | Serialized coupon | `8112009988459000039133772240739897` |
+| 3 | Serialized coupon | `8112009988459000049133939957096441` |
+| 4 | Serialized coupon | `8112009988459000199133935966961409` |
+| 5 | 16-digit fetch code | `1234567890123456` |
+
+#### Step 2. Resolve scanned values into serialized coupons and `base_gs1`
+
+- The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
+- The `16`-digit fetch code is sent to TCB in its own redemption request.
+- Assume TCB returns the following additional serialized coupons from that fetch code.
+
+| Source | Serialized coupon | `base_gs1` |
+| --- | --- | --- |
+| Local parse | `8112009988459000019133924009755364` | `811200998845900001` |
+| Local parse | `8112009988459000039133772240739897` | `811200998845900003` |
+| Local parse | `8112009988459000049133939957096441` | `811200998845900004` |
+| Local parse | `8112009988459000199133935966961409` | `811200998845900019` |
+| TCB fetch-code response | `8112009988459000019133520317194861` | `811200998845900001` |
+| TCB fetch-code response | `8112009988459000039133690612006084` | `811200998845900003` |
+| TCB fetch-code response | `8112009988459000049133457646689353` | `811200998845900004` |
+| TCB fetch-code response | `8112009988459000059133286213033835` | `811200998845900005` |
+| TCB fetch-code response | `8112009988459000089133401940529627` | `811200998845900008` |
+| TCB fetch-code response | `8112009988459000119133614973675487` | `811200998845900011` |
+| TCB fetch-code response | `8112009988459000129133212234898075` | `811200998845900012` |
+| TCB fetch-code response | `8112009988459000139133621151540206` | `811200998845900013` |
+| TCB fetch-code response | `8112009988459000149133342361220548` | `811200998845900014` |
+| TCB fetch-code response | `8112009988459000199133782272284945` | `811200998845900019` |
+
+#### Step 3. Load purchase requirements from the local `base_gs1` database
+
+Use `base_gs1` as the key into your local offer / purchase-requirement database.
+
+| `base_gs1` | Workbook offer summary |
+| --- | --- |
+| `811200998845900001` | Buy 2 Products in Group A and Save $1.00 |
+| `811200998845900003` | Buy any 2 products from A or B and save $1.00 |
+| `811200998845900004` | Buy any 2 products from A or B or C and save $1.00 |
+| `811200998845900005` | Buy 1 get 1 free up to $1.99 |
+| `811200998845900008` | Buy 5 Products in Group A and get 2 Free from Group B |
+| `811200998845900011` | Buy 1 item from Group A get 1 item from Group B free up to $1.99 |
+| `811200998845900012` | Spend $5 on chips OR dip OR soda and get $2 off |
+| `811200998845900013` | Spend $5 on chips AND dip AND soda and get $3 off |
+| `811200998845900014` | Spend $5 on chips AND dip OR soda and get $2 off |
+| `811200998845900019` | Buy 1A and 2B and 3C and get $3 off |
+
+#### Step 4. Build the basket and perform local rejection first
+
+Basket example:
+
+| Product code | Qty | Price |
+| --- | --- | --- |
+| `037000930396` | 1 | `1.29` |
+| `037000934677` | 1 | `1.34` |
+| `030772076835` | 2 | `3.07` |
+| `037000534358` | 1 | `6.62` |
+| `037000808893` | 1 | `5.64` |
+| `7106919588011` | 1 | `1.81` |
+| `8952803493171` | 1 | `4.67` |
+
+Local rejection examples before token fetch:
+
+| Coupon | Why rejected locally |
+| --- | --- |
+| `8112009988459000199133935966961409` | `base_gs1 = 811200998845900019` needs `1A + 2B + 3C`; this basket has no third-group triplet |
+| `8112009988459000139133621151540206` | `base_gs1 = 811200998845900013` needs spend across chips and dip and soda; this basket does not satisfy all groups |
+| `8112009988459000089133401940529627` | `base_gs1 = 811200998845900008` needs 5 items from A and 2 free from B; this basket does not satisfy the quantity rule |
+
+Coupons kept after local filtering for the second pass:
+
+- `8112009988459000019133924009755364`
+- `8112009988459000039133772240739897`
+- `8112009988459000049133939957096441`
+
+#### Step 5. Build the validation input
+
+```kotlin
+import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
+import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+
+val basket = mutableListOf(
+    BasketItem().apply {
+        productCode = "037000930396"
+        price = 1.29
+        quantity = 1
+        unit = "item"
+    },
+    BasketItem().apply {
+        productCode = "037000934677"
+        price = 1.34
+        quantity = 1
+        unit = "item"
+    },
+    BasketItem().apply {
+        productCode = "030772076835"
+        price = 3.07
+        quantity = 2
+        unit = "item"
+    },
+    BasketItem().apply {
+        productCode = "037000534358"
+        price = 6.62
+        quantity = 1
+        unit = "item"
+    },
+    BasketItem().apply {
+        productCode = "037000808893"
+        price = 5.64
+        quantity = 1
+        unit = "item"
+    }
+)
+
+val keptCouponGs1s = listOf(
+    "8112009988459000019133924009755364",
+    "8112009988459000039133772240739897",
+    "8112009988459000049133939957096441"
+)
+
+val resolvedBaseGs1ByCoupon = mapOf(
+    "8112009988459000019133924009755364" to "811200998845900001",
+    "8112009988459000039133772240739897" to "811200998845900003",
+    "8112009988459000049133939957096441" to "811200998845900004"
+)
+
+val purchaseRequirementDb: Map<String, PurchaseRequirement> = loadPurchaseRequirementDb()
+
+val coupons = keptCouponGs1s.map { gs1 ->
+    InputCoupon().apply {
+        this.gs1 = gs1
+        purchaseRequirement = purchaseRequirementDb[resolvedBaseGs1ByCoupon[gs1]]
+    }
+}.toMutableList()
+
+val input = BasketValidationInput().apply {
+    this.basket = basket
+    this.coupons = coupons
+}
+```
+
+#### Step 6. Get the TCB token
+
+```kotlin
+val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
+    "https://api.try.thecouponbureau.org",
+    "YOUR_ACCESS_KEY",
+    "YOUR_SECRET_KEY"
+)
+```
+
+#### Step 7. Call `validateBasketHelper(...)`
+
+```kotlin
+input.tcbBaseUrl = "https://api.try.thecouponbureau.org"
+input.tcbAccessKey = "YOUR_ACCESS_KEY"
+input.tcbAccessToken = accessToken
+
+val result = BasketValidator.validateBasketHelper(input)
+```
+
+What happens inside this second validation pass:
+
+1. Locally supplied `purchase_requirement` objects are checked first.
+2. TCB `retailer/redeem` is called with `pre_process = "yes"` for the remaining coupons.
+3. Coupons not returned in `newly_redeemed` are removed.
+4. Final basket validation runs on the TCB-confirmed coupon set.
+
+Example validation JSON response for this walkthrough:
+
+```json
+{
+  "basket_validation_output": {
+    "discount_in_cents": 300,
+    "applied_coupons": [
+      {
+        "coupon_code": "8112009988459000019133924009755364",
+        "face_value_in_cents": 100,
+        "product_codes": {
+          "primary": [
+            "037000930396",
+            "037000934677"
+          ]
+        }
+      },
+      {
+        "coupon_code": "8112009988459000039133772240739897",
+        "face_value_in_cents": 100,
+        "product_codes": {
+          "secondary": [
+            "030772076835"
+          ]
+        }
+      },
+      {
+        "coupon_code": "8112009988459000049133939957096441",
+        "face_value_in_cents": 100,
+        "product_codes": {
+          "third": [
+            "037000534358",
+            "037000808893"
+          ]
+        }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+#### Step 8. Apply the discount
+
+Use `result.basketValidationOutput.discountInCents` as the transaction discount.
+
+#### Step 9. Redeem coupons in TCB after discount application
+
+```kotlin
+val redeemResponseJson =
+    org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService.redeemCoupons(
+        "https://api.try.thecouponbureau.org",
+        "YOUR_ACCESS_KEY",
+        accessToken,
+        listOf(
+            "8112009988459000019133924009755364",
+            "8112009988459000039133772240739897",
+            "8112009988459000049133939957096441"
+        )
+    )
+```
+
+#### Step 10. Roll back redeemed coupons if the transaction is voided
+
+```kotlin
+val rollbackResponses =
+    org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService.rollbackCoupons(
+        "https://api.try.thecouponbureau.org",
+        "YOUR_ACCESS_KEY",
+        accessToken,
+        listOf(
+            "8112009988459000019133924009755364",
+            "8112009988459000039133772240739897",
+            "8112009988459000049133939957096441"
+        )
+    )
+```
+
 ## 6. Resolve scanned GS1s into serialized GS1 + base GS1
 
 Use:
@@ -288,15 +545,14 @@ Use:
 This method:
 
 - accepts a list of scanned GS1 strings
-- calls TCB `retailer/redeem` and returns only coupons present in `newly_redeemed`
-- sends `no_purchase_requirement = "yes"` to avoid returning purchase requirement data from TCB
 - returns `gs1` and `base_gs1`
-- if a scanned code is `16` digits, it is sent in its own redemption call
-- if a scanned code is longer than `40` characters, it is sent in its own redemption call
-- all other scanned codes are grouped into batches of `15` per redemption call
+- if a scanned code is a valid serialized GS1, it is parsed locally with no TCB call
+- if concatenated serialized GS1s are provided, each serialized GS1 is parsed locally with no TCB call
+- only `16` digit scanned codes are sent to TCB `retailer/redeem`
+- each `16` digit scanned code is sent in its own redemption request
 - all redemption calls run in parallel
-- uses `newly_redeemed` from the TCB response
-- returns only the serialized `gs1` and associated `base_gs1`
+- TCB calls send `no_purchase_requirement = "yes"` to avoid returning purchase requirement data
+- for TCB calls, only coupons present in `newly_redeemed` are returned
 - does not return `purchase_requirement`
 
 Kotlin example:
@@ -356,6 +612,7 @@ The caller must send `gs1` for every coupon. The caller may also send optional `
 - then the remaining coupons are redeemed through TCB
 - the SDK updates the internal coupon fields from the TCB response
 - then final basket validation runs on the resolved coupon set
+- if a coupon is not returned by TCB in `newly_redeemed`, it is removed before final validation
 
 ```mermaid
 flowchart TD
