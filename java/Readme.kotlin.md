@@ -1,285 +1,4 @@
-# Using `basket-validator-1.0-SNAPSHOT.jar` from Kotlin
-
-Use this package as a library from your Kotlin code.
-
-This project builds:
-
-```bash
-target/basket-validator-1.0-SNAPSHOT.jar
-```
-
-## 1. Build the JAR
-
-From the `java/` folder:
-
-```bash
-./build-jar.sh
-```
-
-Output:
-
-```bash
-target/basket-validator-1.0-SNAPSHOT.jar
-```
-
-## 2. Add the JAR to your Kotlin project
-
-If you are using a local/manual setup, copy the fat JAR into your Kotlin project:
-
-```bash
-your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
-```
-
-## 3. Call the validator directly from Kotlin
-
-Main classes:
-
-- `org.thecouponbureau.validate.basket.Services.TcbTokenService`
-- `org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service`
-- `org.thecouponbureau.validate.basket.core.BasketValidator`
-- `org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput`
-- `org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem`
-- `org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon`
-- `org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement`
-- `org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService`
-- `org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService`
-
-Example:
-
-```kotlin
-import org.thecouponbureau.validate.basket.core.BasketValidator
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
-import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
-
-fun main() {
-    val item1 = BasketItem().apply {
-        productCode = "037000930396"
-        price = 1.29
-        quantity = 1
-        unit = "item"
-    }
-
-    val item2 = BasketItem().apply {
-        productCode = "037000934677"
-        price = 1.34
-        quantity = 1
-        unit = "item"
-    }
-
-    val coupon1 = InputCoupon().apply {
-        gs1 = "8112009988459000019133924009755364"
-        purchaseRequirement = PurchaseRequirement().apply {
-            primaryPurchaseGtins = listOf("037000930396", "037000934677")
-            primaryPurchaseSaveValue = 100L
-            primaryPurchaseRequirements = 2L
-            primaryPurchaseReqCode = 0
-            saveValueCode = 0
-        }
-    }
-
-    val coupon2 = InputCoupon().apply {
-        gs1 = "8112009988459000019133222024880382"
-    }
-
-    val input = BasketValidationInput().apply {
-        basket = mutableListOf(item1, item2)
-        coupons = mutableListOf(coupon1, coupon2)
-        tcbBaseUrl = "https://api.try.thecouponbureau.org/"
-        tcbAccessKey = "YOUR_ACCESS_KEY"
-        tcbAccessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
-            tcbBaseUrl,
-            tcbAccessKey,
-            "YOUR_SECRET_KEY"
-        )
-    }
-
-    val result = BasketValidator.validateBasketHelper(input)
-    println(result.basketValidationOutput.discountInCents)
-}
-```
-
-## 4. JSON-string driven usage from Kotlin
-
-The Java models expect `snake_case` JSON when using Jackson.
-
-This example shows the supported caller input shape:
-
-- each coupon object must contain `gs1`
-- each coupon object may also include optional `purchase_requirement`
-- `base_gs1` is internal and should not be supplied by the caller
-
-Example JSON:
-
-```json
-{
-  "basket": [
-    {
-      "product_code": "037000758365",
-      "price": 1.99,
-      "quantity": 12,
-      "unit": "item"
-    },
-    {
-      "product_code": "7106919588011",
-      "price": 1.81,
-      "quantity": 2,
-      "unit": "item"
-    },
-    {
-      "product_code": "037000925033",
-      "price": 1.59,
-      "quantity": 3,
-      "unit": "item"
-    }
-  ],
-  "coupons": [
-    {
-      "gs1": "8112109988459000269133321426026193",
-      "purchase_requirement": {
-        "primary_purchase_gtins": [
-          "037000930396",
-          "037000934677"
-        ],
-        "primary_purchase_save_value": 100,
-        "primary_purchase_requirements": 2,
-        "primary_purchase_req_code": 0,
-        "save_value_code": 0
-      }
-    },
-    {
-      "gs1": "8112109988459000269133587761214614"
-    }
-  ]
-}
-```
-
-Kotlin example:
-
-```kotlin
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.PropertyNamingStrategies
-import org.thecouponbureau.validate.basket.core.BasketValidator
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
-
-fun main() {
-    val mapper = ObjectMapper().apply {
-        propertyNamingStrategy = PropertyNamingStrategies.SNAKE_CASE
-    }
-
-    val jsonInput = """
-        {
-          "basket": [
-            {
-              "product_code": "037000758365",
-              "price": 1.99,
-              "quantity": 12,
-              "unit": "item"
-            },
-            {
-              "product_code": "7106919588011",
-              "price": 1.81,
-              "quantity": 2,
-              "unit": "item"
-            },
-            {
-              "product_code": "037000925033",
-              "price": 1.59,
-              "quantity": 3,
-              "unit": "item"
-            }
-          ],
-          "coupons": [
-            {
-              "gs1": "8112109988459000269133321426026193",
-              "purchase_requirement": {
-                "primary_purchase_gtins": [
-                  "037000930396",
-                  "037000934677"
-                ],
-                "primary_purchase_save_value": 100,
-                "primary_purchase_requirements": 2,
-                "primary_purchase_req_code": 0,
-                "save_value_code": 0
-              }
-            },
-            {
-              "gs1": "8112109988459000269133587761214614"
-            }
-          ]
-        }
-    """.trimIndent()
-
-    val input = mapper.readValue(
-        jsonInput,
-        BasketValidationInput::class.java
-    )
-
-    val result = BasketValidator.validateBasketHelper(input)
-    println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result))
-}
-```
-
-## 5. Fetch TCB access token
-
-Fetch the token first, then reuse that token for resolve, validate, redeem, and rollback.
-
-Use:
-
-- `TcbTokenService.fetchAccessToken(...)`
-- `TcbTokenService.fetchAccessTokenResponse(...)`
-
-Example:
-
-```kotlin
-val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
-    "https://api.try.thecouponbureau.org",
-    "YOUR_ACCESS_KEY",
-    "YOUR_SECRET_KEY"
-)
-```
-
-If you want to print the full token response, read `x-access-token`, and save it for reuse in your own application cache, use:
-
-```kotlin
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.databind.node.ObjectNode
-import java.nio.file.Files
-import java.nio.file.Path
-import java.time.Instant
-import org.thecouponbureau.validate.basket.Services.TcbTokenService
-
-fun main() {
-    val mapper = ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
-
-    val tokenResponse = TcbTokenService.fetchAccessTokenResponse(
-        "https://api.try.thecouponbureau.org",
-        "YOUR_ACCESS_KEY",
-        "YOUR_SECRET_KEY"
-    )
-
-    println(mapper.writeValueAsString(tokenResponse))
-
-    val accessToken = tokenResponse.accessToken
-
-    val cacheJson: ObjectNode = mapper.createObjectNode().apply {
-        put("status", tokenResponse.status)
-        put("x-access-token", accessToken)
-        put("created_at_epoch_ms", Instant.now().toEpochMilli())
-    }
-
-    Files.writeString(
-        Path.of("tcb-access-token-cache.json"),
-        mapper.writeValueAsString(cacheJson)
-    )
-}
-```
-
-That cache file is application-owned. The SDK does not reuse it automatically. TCB states the token is valid for 24 hours, so your application can reload this file and reuse `x-access-token` until your own expiry policy says to refresh it.
-
-### POS / SCO walkthrough
+# Kotlin integration flow
 
 This walkthrough uses real serialized coupon examples and `base_gs1` values from `java/POS_Basket_Validation_UseCases.xlsx`.
 
@@ -297,9 +16,28 @@ The `16`-digit fetch code below is illustrative. The workbook contains serialize
 
 #### Step 2. Resolve scanned values into serialized coupons and `base_gs1`
 
+Request:
+
+```kotlin
+val resolved = TcbScannedGs1Service.parseScannedGs1s(
+    "https://api.try.thecouponbureau.org/",
+    "YOUR_ACCESS_KEY",
+    accessToken,
+    listOf(
+        "8112009988459000019133924009755364",
+        "8112009988459000039133772240739897",
+        "8112009988459000049133939957096441",
+        "8112009988459000199133935966961409",
+        "1234567890123456"
+    )
+)
+```
+
 - The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
 - The `16`-digit fetch code is sent to TCB in its own redemption request.
 - Assume TCB returns the following additional serialized coupons from that fetch code.
+
+Response:
 
 | Source | Serialized coupon | `base_gs1` |
 | --- | --- | --- |
@@ -322,6 +60,8 @@ The `16`-digit fetch code below is illustrative. The workbook contains serialize
 
 Use `base_gs1` as the key into your local offer / purchase-requirement database.
 
+Response from local DB lookup:
+
 | `base_gs1` | Workbook offer summary |
 | --- | --- |
 | `811200998845900001` | Buy 2 Products in Group A and Save $1.00 |
@@ -336,6 +76,8 @@ Use `base_gs1` as the key into your local offer / purchase-requirement database.
 | `811200998845900019` | Buy 1A and 2B and 3C and get $3 off |
 
 #### Step 4. Build the basket and perform local rejection first
+
+Request basket:
 
 Basket example:
 
@@ -364,6 +106,8 @@ Coupons kept after local filtering for the second pass:
 - `8112009988459000049133939957096441`
 
 #### Step 5. Build the validation input
+
+Request:
 
 ```kotlin
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
@@ -431,7 +175,28 @@ val input = BasketValidationInput().apply {
 }
 ```
 
+Resulting input payload shape:
+
+```json
+{
+  "basket": [
+    { "product_code": "037000930396", "price": 1.29, "quantity": 1, "unit": "item" },
+    { "product_code": "037000934677", "price": 1.34, "quantity": 1, "unit": "item" },
+    { "product_code": "030772076835", "price": 3.07, "quantity": 2, "unit": "item" },
+    { "product_code": "037000534358", "price": 6.62, "quantity": 1, "unit": "item" },
+    { "product_code": "037000808893", "price": 5.64, "quantity": 1, "unit": "item" }
+  ],
+  "coupons": [
+    { "gs1": "8112009988459000019133924009755364", "purchase_requirement": { } },
+    { "gs1": "8112009988459000039133772240739897", "purchase_requirement": { } },
+    { "gs1": "8112009988459000049133939957096441", "purchase_requirement": { } }
+  ]
+}
+```
+
 #### Step 6. Get the TCB token
+
+Request:
 
 ```kotlin
 val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
@@ -441,7 +206,18 @@ val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.f
 )
 ```
 
+Response:
+
+```json
+{
+  "status": "success",
+  "x-access-token": "YOUR_ACCESS_TOKEN"
+}
+```
+
 #### Step 7. Call `validateBasketHelper(...)`
+
+Request:
 
 ```kotlin
 input.tcbBaseUrl = "https://api.try.thecouponbureau.org"
@@ -458,7 +234,7 @@ What happens inside this second validation pass:
 3. Coupons not returned in `newly_redeemed` are removed.
 4. Final basket validation runs on the TCB-confirmed coupon set.
 
-Example validation JSON response for this walkthrough:
+Response:
 
 ```json
 {
@@ -504,7 +280,17 @@ Example validation JSON response for this walkthrough:
 
 Use `result.basketValidationOutput.discountInCents` as the transaction discount.
 
+Response used by POS:
+
+```json
+{
+  "discount_in_cents": 300
+}
+```
+
 #### Step 9. Redeem coupons in TCB after discount application
+
+Request:
 
 ```kotlin
 val redeemResponseJson =
@@ -520,7 +306,34 @@ val redeemResponseJson =
     )
 ```
 
+Response:
+
+```json
+{
+  "status": "success",
+  "status_code": "FULL_REDEMPTION",
+  "newly_redeemed": [
+    {
+      "gs1": "8112009988459000019133924009755364",
+      "master_offer_file": "811200998845900001"
+    },
+    {
+      "gs1": "8112009988459000039133772240739897",
+      "master_offer_file": "811200998845900003"
+    },
+    {
+      "gs1": "8112009988459000049133939957096441",
+      "master_offer_file": "811200998845900004"
+    }
+  ],
+  "total_gs1s_processed": 3,
+  "message": "Redeemed 3 gs1(s)"
+}
+```
+
 #### Step 10. Roll back redeemed coupons if the transaction is voided
+
+Request:
 
 ```kotlin
 val rollbackResponses =
@@ -534,6 +347,16 @@ val rollbackResponses =
             "8112009988459000049133939957096441"
         )
     )
+```
+
+Response:
+
+```json
+{
+  "8112009988459000019133924009755364": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}",
+  "8112009988459000039133772240739897": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}",
+  "8112009988459000049133939957096441": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}"
+}
 ```
 
 ## 6. Resolve scanned GS1s into serialized GS1 + base GS1
