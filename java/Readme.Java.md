@@ -116,14 +116,6 @@ Basket example:
 | `7106919588011` | 1 | `1.81` |
 | `8952803493171` | 1 | `4.67` |
 
-Local rejection examples before token fetch:
-
-| Coupon | Why rejected locally |
-| --- | --- |
-| `8112009988459000199133935966961409` | `base_gs1 = 811200998845900019` needs `1A + 2B + 3C`; this basket has no third-group triplet |
-| `8112009988459000139133621151540206` | `base_gs1 = 811200998845900013` needs spend across chips and dip and soda; this basket does not satisfy all groups |
-| `8112009988459000089133401940529627` | `base_gs1 = 811200998845900008` needs 5 items from A and 2 free from B; this basket does not satisfy the quantity rule |
-
 Call `validateBasketHelper(...)` one coupon at a time in this step.
 
 Important:
