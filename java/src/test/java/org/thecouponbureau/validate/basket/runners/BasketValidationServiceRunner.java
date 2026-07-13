@@ -27,6 +27,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService;
+import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
@@ -41,7 +42,10 @@ public class BasketValidationServiceRunner {
 
 		input.tcbBaseUrl = "https://api.try.thecouponbureau.org/";
 		input.tcbAccessKey = "8053fd0f80cf3778659def1359cac218";
-		input.tcbSecretKey = "eb42623aa2675e50f15da4f6d4aa0ad6";
+		input.tcbAccessToken = TcbTokenService.fetchAccessToken(
+				input.tcbBaseUrl,
+				input.tcbAccessKey,
+				"eb42623aa2675e50f15da4f6d4aa0ad6");
 
 	}
 
@@ -92,7 +96,7 @@ public class BasketValidationServiceRunner {
 						TcbCouponRedeemService.redeemCoupons(
 								input.tcbBaseUrl,
 								input.tcbAccessKey,
-								input.tcbSecretKey,
+								input.tcbAccessToken,
 								gs1List);
 				
 				logger.info("====================================");
@@ -147,7 +151,7 @@ public class BasketValidationServiceRunner {
 							TcbCouponRollbackService.rollbackCoupons(
 									input.tcbBaseUrl,
 									input.tcbAccessKey,
-									input.tcbSecretKey,
+									input.tcbAccessToken,
 									rollbackGs1List);
 					
 					logger.info("Rollback Response:");
@@ -442,7 +446,7 @@ public class BasketValidationServiceRunner {
 				                TcbCouponRedeemService.redeemCoupons(
 				                        input.tcbBaseUrl,
 				                        input.tcbAccessKey,
-				                        input.tcbSecretKey,
+				                        input.tcbAccessToken,
 				                        gs1List);
 				        
 				    	logger.info("");
@@ -476,7 +480,7 @@ public class BasketValidationServiceRunner {
 				                    TcbCouponRollbackService.rollbackCoupons(
 				                            input.tcbBaseUrl,
 				                            input.tcbAccessKey,
-				                            input.tcbSecretKey,
+				                            input.tcbAccessToken,
 				                            rollbackGs1List);
 
 				            
@@ -608,7 +612,7 @@ public class BasketValidationServiceRunner {
 						TcbCouponRollbackService.rollbackCoupons(
 								input.tcbBaseUrl,
 								input.tcbAccessKey,
-								input.tcbSecretKey,
+								input.tcbAccessToken,
 								singleCoupon);
 
 				logger.info("----------------------------------------");

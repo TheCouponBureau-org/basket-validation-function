@@ -24,20 +24,6 @@ public class TcbCouponRedeemService {
     public static String redeemCoupons(
             String baseUrl,
             String accessKey,
-            String secretKey,
-            List<String> gs1s) {
-
-        if (gs1s == null || gs1s.isEmpty()) {
-            throw new IllegalArgumentException("At least one gs1 is required for coupon redemption.");
-        }
-
-        String accessToken = TcbTokenService.getAccessToken(baseUrl, accessKey, secretKey);
-        return redeemCouponsWithAccessToken(baseUrl, accessKey, accessToken, gs1s);
-    }
-
-    public static String redeemCouponsWithAccessToken(
-            String baseUrl,
-            String accessKey,
             String accessToken,
             List<String> gs1s) {
 

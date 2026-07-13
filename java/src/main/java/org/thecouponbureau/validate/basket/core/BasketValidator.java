@@ -113,16 +113,10 @@ public class BasketValidator {
         // source of truth before final validation is run.
         if (hasCouponsToResolve(couponsToProcess)
                 && hasTcbCredentials(basketValidationInput)) {
-            String accessToken = TcbTokenService.getAccessToken(
-                    basketValidationInput.tcbBaseUrl,
-                    basketValidationInput.tcbAccessKey,
-                    basketValidationInput.tcbSecretKey
-            );
-
             couponsToProcess = TcbCouponResolutionService.resolveCoupons(
                     basketValidationInput.tcbBaseUrl,
                     basketValidationInput.tcbAccessKey,
-                    accessToken,
+                    basketValidationInput.tcbAccessToken,
                     couponsToProcess,
                     enableLogging
             );
@@ -295,7 +289,7 @@ public class BasketValidator {
         return input != null
                 && !isBlank(input.tcbBaseUrl)
                 && !isBlank(input.tcbAccessKey)
-                && !isBlank(input.tcbSecretKey);
+                && !isBlank(input.tcbAccessToken);
     }
 
     private static void logValidationInput(
@@ -312,7 +306,7 @@ public class BasketValidator {
             logInput.coupons = basketValidationInput.coupons;
             logInput.tcbBaseUrl = basketValidationInput.tcbBaseUrl;
             logInput.tcbAccessKey = redactValue(basketValidationInput.tcbAccessKey);
-            logInput.tcbSecretKey = redactValue(basketValidationInput.tcbSecretKey);
+            logInput.tcbAccessToken = redactValue(basketValidationInput.tcbAccessToken);
             logInput.enableLogging = basketValidationInput.enableLogging;
 
             System.out.println("[BasketValidator] Validation input:");

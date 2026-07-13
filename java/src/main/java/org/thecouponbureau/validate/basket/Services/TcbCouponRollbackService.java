@@ -17,20 +17,6 @@ public class TcbCouponRollbackService {
     public static Map<String, String> rollbackCoupons(
             String baseUrl,
             String accessKey,
-            String secretKey,
-            List<String> gs1s) {
-
-        if (gs1s == null || gs1s.isEmpty()) {
-            throw new IllegalArgumentException("At least one gs1 is required for coupon rollback.");
-        }
-
-        String accessToken = TcbTokenService.getAccessToken(baseUrl, accessKey, secretKey);
-        return rollbackCouponsWithAccessToken(baseUrl, accessKey, accessToken, gs1s);
-    }
-
-    public static Map<String, String> rollbackCouponsWithAccessToken(
-            String baseUrl,
-            String accessKey,
             String accessToken,
             List<String> gs1s) {
 

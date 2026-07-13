@@ -34,6 +34,8 @@ your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 
 Main classes:
 
+- `org.thecouponbureau.validate.basket.Services.TcbTokenService`
+- `org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service`
 - `org.thecouponbureau.validate.basket.core.BasketValidator`
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput`
 - `org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem`
@@ -86,7 +88,11 @@ fun main() {
         coupons = mutableListOf(coupon1, coupon2)
         tcbBaseUrl = "https://api.try.thecouponbureau.org/"
         tcbAccessKey = "YOUR_ACCESS_KEY"
-        tcbSecretKey = "YOUR_SECRET_KEY"
+        tcbAccessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
+            tcbBaseUrl,
+            tcbAccessKey,
+            "YOUR_SECRET_KEY"
+        )
     }
 
     val result = BasketValidator.validateBasketHelper(input)
@@ -215,7 +221,70 @@ fun main() {
 }
 ```
 
-## 5. Coupon resolution flow from Kotlin
+## 5. Fetch TCB access token
+
+Fetch the token first, then reuse that token for resolve, validate, redeem, and rollback.
+
+Use:
+
+- `TcbTokenService.fetchAccessToken(...)`
+
+Example:
+
+```kotlin
+val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
+    "https://api.try.thecouponbureau.org",
+    "YOUR_ACCESS_KEY",
+    "YOUR_SECRET_KEY"
+)
+```
+
+## 6. Resolve scanned GS1s into serialized GS1 + base GS1
+
+Use:
+
+- `TcbScannedGs1Service.parseScannedGs1s(...)`
+
+This method:
+
+- accepts a list of scanned GS1 strings
+- parses consumer serialized data strings locally when possible
+- returns `gs1` and `base_gs1`
+- if the scanned code is `16` digits, or not a consumer serialized data string, calls TCB `retailer/redeem`
+- uses `newly_redeemed` from the TCB response
+- returns only the serialized `gs1` and associated `base_gs1`
+- does not return `purchase_requirement`
+
+Kotlin example:
+
+```kotlin
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
+import org.thecouponbureau.validate.basket.Services.TcbTokenService
+
+fun main() {
+    val accessToken = TcbTokenService.fetchAccessToken(
+        "https://api.try.thecouponbureau.org/",
+        "YOUR_ACCESS_KEY",
+        "YOUR_SECRET_KEY"
+    )
+
+    val resolved = TcbScannedGs1Service.parseScannedGs1s(
+        "https://api.try.thecouponbureau.org/",
+        "YOUR_ACCESS_KEY",
+        accessToken,
+        listOf(
+            "8112209988459000329165266614604064",
+            "8112209988459000340001"
+        )
+    )
+
+    resolved.forEach { item ->
+        println("${item.gs1} -> ${item.baseGs1}")
+    }
+}
+```
+
+## 7. Validate basket from Kotlin
 
 The caller must send `gs1` for every coupon. The caller may also send optional `purchase_requirement` for some coupons. The validator uses this flow:
 
@@ -242,12 +311,12 @@ flowchart TD
     H --> L
 ```
 
-Set these optional fields before calling:
+Then set these fields before calling:
 
 ```kotlin
 input.tcbBaseUrl = "https://api.try.thecouponbureau.org"
 input.tcbAccessKey = "YOUR_ACCESS_KEY"
-input.tcbSecretKey = "YOUR_SECRET_KEY"
+input.tcbAccessToken = accessToken
 ```
 
 If these are not set, unresolved coupons are ignored because the SDK cannot fetch `purchase_requirement`.
@@ -257,7 +326,7 @@ Example:
 ```kotlin
 input.tcbBaseUrl = "https://api.try.thecouponbureau.org/"
 input.tcbAccessKey = "8053fd0f80cf3778659def1359cac218"
-input.tcbSecretKey = "eb42623aa2675e50f15da4f6d4aa0ad6"
+input.tcbAccessToken = accessToken
 ```
 
 Optional debug logging:
@@ -275,47 +344,9 @@ When `enableLogging` is `true`, the validator prints pretty JSON logs for:
 
 The resolved output log also prints `coupon_gs1_order` so you can verify that coupon order is still maintained based on the input `gs1` values.
 
-The input log redacts `tcbAccessKey` and `tcbSecretKey`.
+The input log redacts `tcbAccessKey` and `tcbAccessToken`.
 
-## 6. Parse scanned GS1s into serialized GS1 + base GS1
-
-Use:
-
-- `TcbScannedGs1Service.parseScannedGs1s(...)`
-
-This method:
-
-- accepts a list of scanned GS1 strings
-- parses consumer serialized data strings locally when possible
-- returns `gs1` and `base_gs1`
-- if the scanned code is a `16` digit code, or not a consumer serialized data string, calls TCB `retailer/redeem`
-- uses `newly_redeemed` from the TCB response
-- returns only the serialized `gs1` and associated `base_gs1`
-- does not return `purchase_requirement`
-
-Kotlin example:
-
-```kotlin
-import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
-
-fun main() {
-    val resolved = TcbScannedGs1Service.parseScannedGs1s(
-        "https://api.try.thecouponbureau.org/",
-        "YOUR_ACCESS_KEY",
-        "YOUR_SECRET_KEY",
-        listOf(
-            "8112209988459000329165266614604064",
-            "8112209988459000340001"
-        )
-    )
-
-    resolved.forEach { item ->
-        println("${item.gs1} -> ${item.baseGs1}")
-    }
-}
-```
-
-## 7. Redeem coupons in TCB after discount application
+## 8. Redeem coupons in TCB after discount application
 
 After your retailer system applies the discount, it should redeem the applied coupons in TCB.
 
@@ -326,7 +357,7 @@ Use:
 This method:
 
 - accepts a list of GS1 coupon codes
-- gets or reuses the cached TCB access token
+- uses the provided TCB access token
 - calls the same `retailer/redeem` API
 - if more than `15` GS1s are provided, splits them into chunks of `15`
 - sends those redeem calls in parallel for faster network performance
@@ -340,12 +371,19 @@ Kotlin example:
 
 ```kotlin
 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
+import org.thecouponbureau.validate.basket.Services.TcbTokenService
 
 fun main() {
+    val accessToken = TcbTokenService.fetchAccessToken(
+        "https://api.try.thecouponbureau.org/",
+        "8053fd0f80cf3778659def1359cac218",
+        "eb42623aa2675e50f15da4f6d4aa0ad6"
+    )
+
     val responseJson = TcbCouponRedeemService.redeemCoupons(
         "https://api.try.thecouponbureau.org/",
         "8053fd0f80cf3778659def1359cac218",
-        "eb42623aa2675e50f15da4f6d4aa0ad6",
+        accessToken,
         listOf(
             "8112109988459000269133321426026193",
             "8112109988459000269133587761214614"
@@ -358,7 +396,7 @@ fun main() {
 
 Note: `enableLogging` only affects validation-time GS1 resolution inside `BasketValidator.validateBasketHelper(...)`. It does not change the output of `TcbCouponRedeemService.redeemCoupons(...)`.
 
-## 8. Dependency note
+## 9. Dependency note
 
 For application integration, use:
 
@@ -368,7 +406,7 @@ target/basket-validator-1.0-SNAPSHOT-all.jar
 
 That fat JAR already includes dependencies for embedding in your Kotlin project.
 
-## 9. Rollback redeemed coupons in TCB
+## 10. Rollback redeemed coupons in TCB
 
 If your retailer needs to reverse previously redeemed coupons, use:
 
@@ -377,7 +415,7 @@ If your retailer needs to reverse previously redeemed coupons, use:
 This method:
 
 - accepts a list of GS1 coupon codes
-- gets or reuses the cached TCB access token
+- uses the provided TCB access token
 - calls `DELETE /retailer/rollback/{gs1}`
 - calls each rollback in parallel, one API request per GS1
 - returns a `Map<String, String>` where:
@@ -388,12 +426,19 @@ Kotlin example:
 
 ```kotlin
 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
+import org.thecouponbureau.validate.basket.Services.TcbTokenService
 
 fun main() {
+    val accessToken = TcbTokenService.fetchAccessToken(
+        "https://api.try.thecouponbureau.org/",
+        "8053fd0f80cf3778659def1359cac218",
+        "eb42623aa2675e50f15da4f6d4aa0ad6"
+    )
+
     val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
         "https://api.try.thecouponbureau.org/",
         "8053fd0f80cf3778659def1359cac218",
-        "eb42623aa2675e50f15da4f6d4aa0ad6",
+        accessToken,
         listOf(
             "8112109988459000269133321426026193",
             "8112109988459000269133587761214614"

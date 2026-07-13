@@ -40,7 +40,7 @@ public class basketValidationResults {
         public List<InputCoupon> coupons;
         public String tcbBaseUrl;
         public String tcbAccessKey;
-        public String tcbSecretKey;
+        public String tcbAccessToken;
         public Boolean enableLogging;
     }
 

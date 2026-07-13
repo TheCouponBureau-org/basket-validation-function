@@ -12,7 +12,7 @@ public class BasketValidationCli {
     public static void main(String[] args) throws Exception {
         if (args.length != 1 && args.length != 4) {
             System.err.println(
-                    "Usage: BasketValidationCli <input-json-string> [<tcb-base-url> <tcb-access-key> <tcb-secret-key>]");
+                    "Usage: BasketValidationCli <input-json-string> [<tcb-base-url> <tcb-access-key> <tcb-access-token>]");
             System.exit(1);
         }
 
@@ -25,7 +25,7 @@ public class BasketValidationCli {
         if (args.length == 4) {
             input.tcbBaseUrl = args[1];
             input.tcbAccessKey = args[2];
-            input.tcbSecretKey = args[3];
+            input.tcbAccessToken = args[3];
         }
 
         ValidationResult result = BasketValidator.validateBasketHelper(input);

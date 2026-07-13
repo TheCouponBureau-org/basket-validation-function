@@ -25,20 +25,6 @@ public class TcbScannedGs1Service {
     public static List<SerializedGs1Data> parseScannedGs1s(
             String baseUrl,
             String accessKey,
-            String secretKey,
-            List<String> scannedGs1s) {
-
-        if (scannedGs1s == null || scannedGs1s.isEmpty()) {
-            throw new IllegalArgumentException("At least one scanned gs1 is required.");
-        }
-
-        String accessToken = TcbTokenService.getAccessToken(baseUrl, accessKey, secretKey);
-        return parseScannedGs1sWithAccessToken(baseUrl, accessKey, accessToken, scannedGs1s);
-    }
-
-    public static List<SerializedGs1Data> parseScannedGs1sWithAccessToken(
-            String baseUrl,
-            String accessKey,
             String accessToken,
             List<String> scannedGs1s) {
 
