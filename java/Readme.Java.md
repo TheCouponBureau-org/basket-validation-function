@@ -40,7 +40,27 @@ The `16`-digit fetch code below is illustrative. The workbook contains serialize
 | 4 | Serialized coupon | `8112009988459000199133935966961409` |
 | 5 | 16-digit fetch code | `8112209988459000` |
 
-#### Step 2. Resolve scanned values into serialized coupons and `base_gs1`
+#### Step 2. Get the TCB token
+
+Request:
+
+```java
+String accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
+        "https://api.try.thecouponbureau.org",
+        "YOUR_ACCESS_KEY",
+        "YOUR_SECRET_KEY");
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "x-access-token": "YOUR_ACCESS_TOKEN"
+}
+```
+
+#### Step 3. Resolve scanned values into serialized coupons and `base_gs1`
 
 Request:
 
@@ -81,7 +101,7 @@ Response:
 | TCB fetch-code response | `8112009988459000149133342361220548` | `811200998845900014` |
 | TCB fetch-code response | `8112009988459000199133782272284945` | `811200998845900019` |
 
-#### Step 3. Load purchase requirements from the local `base_gs1` database
+#### Step 4. Load purchase requirements from the local `base_gs1` database
 
 Use `base_gs1` as the key into your local offer / purchase-requirement database.
 
@@ -100,7 +120,7 @@ Response from local DB lookup:
 | `811200998845900014` | Spend $5 on chips AND dip OR soda and get $2 off |
 | `811200998845900019` | Buy 1A and 2B and 3C and get $3 off |
 
-#### Step 4. Build the basket and perform local rejection first
+#### Step 5. Build the basket and perform local rejection first
 
 Request basket:
 
@@ -180,7 +200,7 @@ Coupons kept after local filtering for the second pass:
 - `8112009988459000039133772240739897`
 - `8112009988459000049133939957096441`
 
-#### Step 5. Build the validation input
+#### Step 6. Build the validation input
 
 In this second pass, send only `gs1` values in `coupons`.
 
@@ -274,26 +294,6 @@ Resulting input payload shape:
     { "gs1": "8112009988459000039133772240739897" },
     { "gs1": "8112009988459000049133939957096441" }
   ]
-}
-```
-
-#### Step 6. Get the TCB token
-
-Request:
-
-```java
-String accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.fetchAccessToken(
-        "https://api.try.thecouponbureau.org",
-        "YOUR_ACCESS_KEY",
-        "YOUR_SECRET_KEY");
-```
-
-Response:
-
-```json
-{
-  "status": "success",
-  "x-access-token": "YOUR_ACCESS_TOKEN"
 }
 ```
 
