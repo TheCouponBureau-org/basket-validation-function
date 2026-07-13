@@ -320,6 +320,25 @@ public class ParseScannedGs1Example {
 }
 ```
 
+Example resolve JSON response:
+
+```json
+[
+  {
+    "gs1": "8112209988459000329165266614604064",
+    "base_gs1": "811220998845900032"
+  },
+  {
+    "gs1": "8112109988459000269133321426026193",
+    "base_gs1": "811210998845900026"
+  },
+  {
+    "gs1": "8112109988459000269133587761214614",
+    "base_gs1": "811210998845900026"
+  }
+]
+```
+
 ## 7. Validate basket
 
 The caller must send `gs1` for every coupon. The caller may also send optional `purchase_requirement` for some coupons. The validator uses this flow:
