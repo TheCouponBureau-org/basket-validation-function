@@ -280,9 +280,13 @@ Use:
 This method:
 
 - accepts a list of scanned GS1 strings
-- parses consumer serialized data strings locally when possible
+- calls TCB `retailer/redeem` and returns only coupons present in `newly_redeemed`
+- sends `no_purchase_requirement = "yes"` to avoid returning purchase requirement data from TCB
 - returns `gs1` and `base_gs1`
-- if the scanned code is `16` digits, or not a consumer serialized data string, calls TCB `retailer/redeem`
+- if a scanned code is `16` digits, it is sent in its own redemption call
+- if a scanned code is longer than `40` characters, it is sent in its own redemption call
+- all other scanned codes are grouped into batches of `15` per redemption call
+- all redemption calls run in parallel
 - uses `newly_redeemed` from the TCB response
 - returns only the serialized `gs1` and associated `base_gs1`
 - does not return `purchase_requirement`
@@ -413,14 +417,18 @@ Example validation JSON response:
         "face_value_in_cents": 100,
         "product_codes": {
           "primary": [
-            "037000930396",
-            "037000934677"
+            "037000930396"
+          ],
+          "secondary": [
+            "7106919588011"
+          ],
+          "third": [
+            "037000925033"
           ]
         }
       }
     ]
   },
-  "not_all_coupons_consumed": true,
   "error": null
 }
 ```

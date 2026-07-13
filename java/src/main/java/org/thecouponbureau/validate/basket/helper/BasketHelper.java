@@ -95,19 +95,33 @@ public class BasketHelper {
 	}
 
 	// =====================================================
-	// Group product codes under GTINs
+	// Group product codes by purchase bucket
 	// =====================================================
 	public static Map<String, List<String>> getProductCodes(
 			List<BasketItem> basketItems) {
 
-		Map<String, List<String>> productCodes = new HashMap<>();
-		List<String> gtins = productCodes.computeIfAbsent("gtins", k -> new ArrayList<>());
+		Map<String, List<String>> productCodes = new LinkedHashMap<>();
 
 		for (BasketItem item : basketItems) {
-			gtins.add(item.productCode);
+			String bucket = toProductCodeBucket(item.purchaseGroup);
+			List<String> codes =
+					productCodes.computeIfAbsent(bucket, ignored -> new ArrayList<>());
+			codes.add(item.productCode);
 		}
 
 		return productCodes;
+	}
+
+	private static String toProductCodeBucket(String purchaseGroup) {
+		if ("second_purchase".equals(purchaseGroup)) {
+			return "secondary";
+		}
+
+		if ("third_purchase".equals(purchaseGroup)) {
+			return "third";
+		}
+
+		return "primary";
 	}
 
 	// =====================================================

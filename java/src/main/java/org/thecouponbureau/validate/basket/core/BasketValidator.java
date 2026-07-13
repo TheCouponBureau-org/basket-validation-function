@@ -125,16 +125,10 @@ public class BasketValidator {
         // Step 1: Normalize basket (merge duplicates)
         List<BasketItem> newBasket = normalizedInputBasket;
 
-        boolean notAllCouponsConsumed = false;
-        int index = 0;
-
         // =====================================================
         // Process each coupon sequentially
         // =====================================================
         for (Coupon coupon : couponsToProcess) {
-        	
-        	
-            index++;
 
             // Skip invalid coupon
             if (coupon == null || coupon.purchaseRequirement == null) {
@@ -183,9 +177,6 @@ public class BasketValidator {
                     continue;
                 }
 
-                int oldBasketUnits =
-                        BasketHelper.basketUnits(newBasket);
-
                 // Safety check
                 if (meetsResult.basketItems == null
                         || meetsResult.basketItems.isEmpty()) {
@@ -226,9 +217,6 @@ public class BasketValidator {
                 
          
 
-                int newBasketUnits =
-                        BasketHelper.basketUnits(newBasket);
-
                 // =====================================================
                 // Step 7: Build applied coupon result
                 // =====================================================
@@ -248,16 +236,6 @@ public class BasketValidator {
                 if (discountInCents > 0) {
                     basketValidationOutput.discountInCents += discountInCents;
                 }
-
-                // =====================================================
-                // Step 8: Check if basket exhausted before all coupons used
-                // =====================================================
-                
-                
-                if (newBasketUnits == 0
-                        && index < couponsToProcess.size()) {
-                    notAllCouponsConsumed = true;
-                }
             }
         }
 
@@ -266,7 +244,6 @@ public class BasketValidator {
         // =====================================================
         ValidationResult result = new ValidationResult();
         result.basketValidationOutput = basketValidationOutput;
-        result.notAllCouponsConsumed = notAllCouponsConsumed;
 
         return result;
     }
@@ -481,7 +458,6 @@ public class BasketValidator {
             Map<String, Object> details) {
         ValidationResult result = new ValidationResult();
         result.basketValidationOutput = defaultOutput;
-        result.notAllCouponsConsumed = false;
         result.error = buildValidationError(code, message, details);
         return result;
     }

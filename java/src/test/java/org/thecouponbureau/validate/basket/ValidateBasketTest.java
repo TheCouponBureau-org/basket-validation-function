@@ -8,8 +8,12 @@ import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 import org.junit.jupiter.api.DisplayName;
+import org.thecouponbureau.validate.basket.helper.BasketHelper;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
 
 import java.io.File;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,7 +73,6 @@ public class ValidateBasketTest {
 			assertEquals(0, result.error.details.get("coupon_index"));
 			assertNotNull(result.basketValidationOutput);
 			assertEquals(0, result.basketValidationOutput.discountInCents);
-			assertFalse(result.notAllCouponsConsumed);
 		} catch (Exception e) {
 			fail("Test failed due to exception: " + e.getMessage());
 		}
@@ -125,5 +128,27 @@ public class ValidateBasketTest {
 		} catch (Exception e) {
 			fail("Test failed due to exception: " + e.getMessage());
 		}
+	}
+
+	@Test
+	@DisplayName("Applied coupon product codes are grouped by primary secondary and third")
+	void groupsAppliedCouponProductCodesByPurchaseBucket() {
+		BasketItem primary = new BasketItem();
+		primary.productCode = "037000930396";
+
+		BasketItem secondary = new BasketItem();
+		secondary.productCode = "7106919588011";
+		secondary.purchaseGroup = "second_purchase";
+
+		BasketItem third = new BasketItem();
+		third.productCode = "037000925033";
+		third.purchaseGroup = "third_purchase";
+
+		Map<String, List<String>> productCodes = BasketHelper.getProductCodes(
+				List.of(primary, secondary, third));
+
+		assertEquals(List.of("037000930396"), productCodes.get("primary"));
+		assertEquals(List.of("7106919588011"), productCodes.get("secondary"));
+		assertEquals(List.of("037000925033"), productCodes.get("third"));
 	}
 }

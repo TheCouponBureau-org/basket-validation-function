@@ -56,9 +56,6 @@ public class basketValidationResults {
         // Detailed output of basket validation
         public BasketValidationOutput basketValidationOutput;
 
-        // True if some coupons could not be applied
-        public boolean notAllCouponsConsumed;
-
         // Present when validation fails before processing
         public ValidationError error;
     }

@@ -20,6 +20,8 @@ public class TcbScannedGs1Service {
     private static final int SERIALIZED_GS1_LENGTH = 34;
     private static final int BASE_GS1_LENGTH = 18;
     private static final int REDEEM_CHUNK_SIZE = 15;
+    private static final int SINGLE_REDEEM_CODE_LENGTH = 16;
+    private static final int SINGLE_REDEEM_SCAN_THRESHOLD = 40;
     private static final String CONSUMER_SERIALIZED_PREFIX = "8112";
 
     public static List<SerializedGs1Data> parseScannedGs1s(
@@ -31,24 +33,7 @@ public class TcbScannedGs1Service {
         validateInputs(baseUrl, accessKey, accessToken, scannedGs1s);
 
         List<SerializedGs1Data> resolvedGs1s = new ArrayList<>();
-        List<String> redeemCandidates = new ArrayList<>();
-
-        for (String scannedGs1 : scannedGs1s) {
-            List<SerializedGs1Data> parsedGs1s = tryParseConsumerSerializedGs1s(scannedGs1);
-
-            if (parsedGs1s.isEmpty()) {
-                redeemCandidates.add(scannedGs1);
-                continue;
-            }
-
-            resolvedGs1s.addAll(parsedGs1s);
-        }
-
-        if (redeemCandidates.isEmpty()) {
-            return resolvedGs1s;
-        }
-
-        List<List<String>> chunks = chunkGs1s(redeemCandidates, REDEEM_CHUNK_SIZE);
+        List<List<String>> chunks = buildRedeemBatches(scannedGs1s);
         List<CompletableFuture<List<SerializedGs1Data>>> futures = new ArrayList<>();
 
         for (List<String> chunk : chunks) {
@@ -62,6 +47,30 @@ public class TcbScannedGs1Service {
         }
 
         return resolvedGs1s;
+    }
+
+    static List<List<String>> buildRedeemBatches(List<String> scannedGs1s) {
+        List<List<String>> batches = new ArrayList<>();
+        List<String> groupedCandidates = new ArrayList<>();
+
+        for (String scannedGs1 : scannedGs1s) {
+            if (isBlank(scannedGs1)) {
+                continue;
+            }
+
+            String normalizedGs1 = scannedGs1.trim();
+
+            if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH
+                    || normalizedGs1.length() > SINGLE_REDEEM_SCAN_THRESHOLD) {
+                batches.add(List.of(normalizedGs1));
+                continue;
+            }
+
+            groupedCandidates.add(normalizedGs1);
+        }
+
+        batches.addAll(chunkGs1s(groupedCandidates, REDEEM_CHUNK_SIZE));
+        return batches;
     }
 
     static List<SerializedGs1Data> tryParseConsumerSerializedGs1s(String scannedGs1) {
@@ -219,7 +228,7 @@ public class TcbScannedGs1Service {
         @JsonProperty("include_check_digit")
         public String includeCheckDigit = "yes";
         @JsonProperty("no_purchase_requirement")
-        public String noPurchaseRequirement = "";
+        public String noPurchaseRequirement = "yes";
         public String offline = "";
     }
 
