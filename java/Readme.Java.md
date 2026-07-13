@@ -1,5 +1,31 @@
 # Java integration flow
 
+## 1. Build the JAR
+
+From the `java/` folder:
+
+```bash
+./build-jar.sh
+```
+
+Use the fat JAR for integration:
+
+```bash
+target/basket-validator-1.0-SNAPSHOT-all.jar
+```
+
+## 2. Add the JAR to your project
+
+Copy the fat JAR into your application, for example:
+
+```bash
+your-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
+```
+
+After that, add the JAR from your `lib/` folder to your Java project classpath using your normal build setup.
+
+## 3. Step-by-step integration
+
 This walkthrough uses real serialized coupon examples and `base_gs1` values from `java/POS_Basket_Validation_UseCases.xlsx`.
 
 The `16`-digit fetch code below is illustrative. The workbook contains serialized coupon examples and offer data, but not the fetch-code-to-coupon mapping returned by TCB.
@@ -12,7 +38,7 @@ The `16`-digit fetch code below is illustrative. The workbook contains serialize
 | 2 | Serialized coupon | `8112009988459000039133772240739897` |
 | 3 | Serialized coupon | `8112009988459000049133939957096441` |
 | 4 | Serialized coupon | `8112009988459000199133935966961409` |
-| 5 | 16-digit fetch code | `1234567890123456` |
+| 5 | 16-digit fetch code | `8112209988459000` |
 
 #### Step 2. Resolve scanned values into serialized coupons and `base_gs1`
 
@@ -29,7 +55,7 @@ List<TcbScannedGs1Service.SerializedGs1Data> resolved =
                         "8112009988459000039133772240739897",
                         "8112009988459000049133939957096441",
                         "8112009988459000199133935966961409",
-                        "1234567890123456"));
+                        "8112209988459000"));
 ```
 
 - The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
