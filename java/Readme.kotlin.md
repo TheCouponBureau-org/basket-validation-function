@@ -189,13 +189,22 @@ Coupons kept after local filtering for the second pass:
 
 #### Step 5. Build the validation input
 
+In this second pass, send only `gs1` values in `coupons`.
+
+Do not send `purchase_requirement` here.
+
+Reason:
+
+- `validateBasketHelper(...)` will call TCB `retailer/redeem` with `pre_process = "yes"`
+- that TCB call validates whether the coupon is currently usable
+- the SDK then uses the updated `purchase_requirement` returned by TCB for final basket validation
+
 Request:
 
 ```kotlin
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
-import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
 
 val basket = mutableListOf(
     BasketItem().apply {
@@ -230,19 +239,9 @@ val basket = mutableListOf(
     }
 )
 
-val resolvedBaseGs1ByCoupon = mapOf(
-    "8112009988459000019133924009755364" to "811200998845900001",
-    "8112009988459000039133772240739897" to "811200998845900003",
-    "8112009988459000049133939957096441" to "811200998845900004"
-)
-
-val purchaseRequirementDb: Map<String, PurchaseRequirement> = loadPurchaseRequirementDb()
-
 val coupons = locallyEligibleCoupons.map { localCoupon ->
-    val gs1 = localCoupon.gs1
     InputCoupon().apply {
-        this.gs1 = gs1
-        purchaseRequirement = purchaseRequirementDb[resolvedBaseGs1ByCoupon[gs1]]
+        this.gs1 = localCoupon.gs1
     }
 }.toMutableList()
 
@@ -264,9 +263,9 @@ Resulting input payload shape:
     { "product_code": "037000808893", "price": 5.64, "quantity": 1, "unit": "item" }
   ],
   "coupons": [
-    { "gs1": "8112009988459000019133924009755364", "purchase_requirement": { } },
-    { "gs1": "8112009988459000039133772240739897", "purchase_requirement": { } },
-    { "gs1": "8112009988459000049133939957096441", "purchase_requirement": { } }
+    { "gs1": "8112009988459000019133924009755364" },
+    { "gs1": "8112009988459000039133772240739897" },
+    { "gs1": "8112009988459000049133939957096441" }
   ]
 }
 ```
@@ -306,10 +305,11 @@ val result = BasketValidator.validateBasketHelper(input)
 
 What happens inside this second validation pass:
 
-1. Locally supplied `purchase_requirement` objects are checked first.
-2. TCB `retailer/redeem` is called with `pre_process = "yes"` for the remaining coupons.
+1. TCB `retailer/redeem` is called with `pre_process = "yes"`.
+2. TCB validates whether each coupon is currently usable.
 3. Coupons not returned in `newly_redeemed` are removed.
-4. Final basket validation runs on the TCB-confirmed coupon set.
+4. The SDK uses the updated `purchase_requirement` returned by TCB.
+5. Final basket validation runs on the TCB-confirmed coupon set.
 
 Response:
 
@@ -501,233 +501,4 @@ Example resolve JSON response:
     "base_gs1": "811210998845900026"
   }
 ]
-```
-
-## 7. Validate basket from Kotlin
-
-The caller must send `gs1` for every coupon. The caller may also send optional `purchase_requirement` for some coupons. The validator uses this flow:
-
-- first, coupons that already include `purchase_requirement` are checked against the basket
-- coupons that are not applicable are removed before any TCB call
-- then the remaining coupons are redeemed through TCB
-- the SDK updates the internal coupon fields from the TCB response
-- then final basket validation runs on the resolved coupon set
-- if a coupon is not returned by TCB in `newly_redeemed`, it is removed before final validation
-
-```mermaid
-flowchart TD
-    A[Input basket and coupons] --> B{Coupon has input purchase_requirement?}
-    B -->|Yes| C[Validate coupon against basket]
-    C --> D{Applicable?}
-    D -->|No| E[Drop coupon before TCB call]
-    D -->|Yes| F[Keep coupon for next step]
-    B -->|No| F
-    F --> G{TCB credentials provided?}
-    G -->|No| H[Ignore unresolved coupons]
-    G -->|Yes| I[Redeem remaining coupons through TCB]
-    I --> J[Fetch purchase_requirement from TCB response]
-    J --> K[Update internal coupon fields]
-    K --> L[Validate basket with resolved coupon set]
-    H --> L
-```
-
-Then set these fields before calling:
-
-```kotlin
-input.tcbBaseUrl = "https://api.try.thecouponbureau.org"
-input.tcbAccessKey = "YOUR_ACCESS_KEY"
-input.tcbAccessToken = accessToken
-```
-
-If these are not set, unresolved coupons are ignored because the SDK cannot fetch `purchase_requirement`.
-
-Example:
-
-```kotlin
-input.tcbBaseUrl = "https://api.try.thecouponbureau.org/"
-input.tcbAccessKey = "8053fd0f80cf3778659def1359cac218"
-input.tcbAccessToken = accessToken
-```
-
-Optional debug logging:
-
-```kotlin
-input.enableLogging = true
-```
-
-When `enableLogging` is `true`, the validator prints pretty JSON logs for:
-
-- the input payload before validation starts
-- each TCB resolution redeem request payload used to fetch missing `purchase_requirement`
-- each TCB resolution redeem response body returned by the API
-- the resolved coupon JSON after internal coupon fields are populated
-
-The resolved output log also prints `coupon_gs1_order` so you can verify that coupon order is still maintained based on the input `gs1` values.
-
-The input log redacts `tcbAccessKey` and `tcbAccessToken`.
-
-Example validation JSON response:
-
-```json
-{
-  "basket_validation_output": {
-    "discount_in_cents": 100,
-    "applied_coupons": [
-      {
-        "coupon_code": "8112109988459000269133321426026193",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "primary": [
-            "037000930396"
-          ],
-          "secondary": [
-            "7106919588011"
-          ],
-          "third": [
-            "037000925033"
-          ]
-        }
-      }
-    ]
-  },
-  "error": null
-}
-```
-
-## 8. Redeem coupons in TCB after discount application
-
-After your retailer system applies the discount, it should redeem the applied coupons in TCB.
-
-Use:
-
-- `TcbCouponRedeemService.redeemCoupons(...)`
-
-This method:
-
-- accepts a list of GS1 coupon codes
-- uses the provided TCB access token
-- calls the same `retailer/redeem` API
-- if more than `15` GS1s are provided, splits them into chunks of `15`
-- sends those redeem calls in parallel for faster network performance
-- merges the chunk responses into one JSON response
-- returns the raw JSON response body from TCB
-- does not send the `pre_process` field
-- generates one `client_txn_id` per chunked redemption request
-- reuses that same `client_txn_id` across retries for idempotency
-
-Kotlin example:
-
-```kotlin
-import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
-import org.thecouponbureau.validate.basket.Services.TcbTokenService
-
-fun main() {
-    val accessToken = TcbTokenService.fetchAccessToken(
-        "https://api.try.thecouponbureau.org/",
-        "8053fd0f80cf3778659def1359cac218",
-        "eb42623aa2675e50f15da4f6d4aa0ad6"
-    )
-
-    val responseJson = TcbCouponRedeemService.redeemCoupons(
-        "https://api.try.thecouponbureau.org/",
-        "8053fd0f80cf3778659def1359cac218",
-        accessToken,
-        listOf(
-            "8112109988459000269133321426026193",
-            "8112109988459000269133587761214614"
-        )
-    )
-
-    println(responseJson)
-}
-```
-
-Note: `enableLogging` only affects validation-time GS1 resolution inside `BasketValidator.validateBasketHelper(...)`. It does not change the output of `TcbCouponRedeemService.redeemCoupons(...)`.
-
-Example redeem JSON response:
-
-```json
-{
-  "status": "success",
-  "status_code": "FULL_REDEMPTION",
-  "newly_redeemed": [
-    {
-      "gs1": "8112109988459000269133321426026193",
-      "master_offer_file": "811210998845900026",
-      "stakeholders_email_domain": []
-    },
-    {
-      "gs1": "8112109988459000269133587761214614",
-      "master_offer_file": "811210998845900026",
-      "stakeholders_email_domain": []
-    }
-  ],
-  "total_gs1s_processed": 2,
-  "message": "Redeemed 2 gs1(s)",
-  "execution_id": "44ac8356-9e97-46a7-afd2-5d826b0a872e"
-}
-```
-
-## 9. Dependency note
-
-For application integration, use:
-
-```bash
-target/basket-validator-1.0-SNAPSHOT-all.jar
-```
-
-That fat JAR already includes dependencies for embedding in your Kotlin project.
-
-## 10. Rollback redeemed coupons in TCB
-
-If your retailer needs to reverse previously redeemed coupons, use:
-
-- `TcbCouponRollbackService.rollbackCoupons(...)`
-
-This method:
-
-- accepts a list of GS1 coupon codes
-- uses the provided TCB access token
-- calls `DELETE /retailer/rollback/{gs1}`
-- calls each rollback in parallel, one API request per GS1
-- returns a `Map<String, String>` where:
-  - key = GS1
-  - value = raw JSON response from TCB
-
-Kotlin example:
-
-```kotlin
-import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
-import org.thecouponbureau.validate.basket.Services.TcbTokenService
-
-fun main() {
-    val accessToken = TcbTokenService.fetchAccessToken(
-        "https://api.try.thecouponbureau.org/",
-        "8053fd0f80cf3778659def1359cac218",
-        "eb42623aa2675e50f15da4f6d4aa0ad6"
-    )
-
-    val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-        "https://api.try.thecouponbureau.org/",
-        "8053fd0f80cf3778659def1359cac218",
-        accessToken,
-        listOf(
-            "8112109988459000269133321426026193",
-            "8112109988459000269133587761214614"
-        )
-    )
-
-    rollbackResponses.forEach { (gs1, responseJson) ->
-        println("$gs1 -> $responseJson")
-    }
-}
-```
-
-Example rollback JSON response map:
-
-```json
-{
-  "8112109988459000269133321426026193": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}",
-  "8112109988459000269133587761214614": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}"
-}
 ```
