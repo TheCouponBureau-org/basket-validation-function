@@ -12,7 +12,7 @@ public class TcbTokenService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public static String fetchAccessToken(
+    public static AccessTokenResponse fetchAccessTokenResponse(
             String baseUrl,
             String accessKey,
             String secretKey) {
@@ -33,19 +33,27 @@ public class TcbTokenService {
             HttpResponse<String> response =
                     TcbApiService.sendWithRetry(request, "access_token");
 
-            TokenResponse tokenResponse =
-                    MAPPER.readValue(response.body(), TokenResponse.class);
+            AccessTokenResponse tokenResponse =
+                    MAPPER.readValue(response.body(), AccessTokenResponse.class);
 
             if (tokenResponse == null || isBlank(tokenResponse.accessToken)) {
                 throw new IllegalStateException(
                         "TCB access_token response did not contain x-access-token.");
             }
 
-            return tokenResponse.accessToken;
+            return tokenResponse;
 
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to fetch TCB access token.", exception);
         }
+    }
+
+    public static String fetchAccessToken(
+            String baseUrl,
+            String accessKey,
+            String secretKey) {
+
+        return fetchAccessTokenResponse(baseUrl, accessKey, secretKey).accessToken;
     }
 
     private static void validateInputs(
@@ -72,7 +80,7 @@ public class TcbTokenService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class TokenResponse {
+    public static class AccessTokenResponse {
         public String status;
         @JsonProperty("x-access-token")
         public String accessToken;

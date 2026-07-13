@@ -228,6 +228,7 @@ Fetch the token first, then reuse that token for resolve, validate, redeem, and 
 Use:
 
 - `TcbTokenService.fetchAccessToken(...)`
+- `TcbTokenService.fetchAccessTokenResponse(...)`
 
 Example:
 
@@ -238,6 +239,45 @@ val accessToken = org.thecouponbureau.validate.basket.Services.TcbTokenService.f
     "YOUR_SECRET_KEY"
 )
 ```
+
+If you want to print the full token response, read `x-access-token`, and save it for reuse in your own application cache, use:
+
+```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.node.ObjectNode
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Instant
+import org.thecouponbureau.validate.basket.Services.TcbTokenService
+
+fun main() {
+    val mapper = ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
+
+    val tokenResponse = TcbTokenService.fetchAccessTokenResponse(
+        "https://api.try.thecouponbureau.org",
+        "YOUR_ACCESS_KEY",
+        "YOUR_SECRET_KEY"
+    )
+
+    println(mapper.writeValueAsString(tokenResponse))
+
+    val accessToken = tokenResponse.accessToken
+
+    val cacheJson: ObjectNode = mapper.createObjectNode().apply {
+        put("status", tokenResponse.status)
+        put("x-access-token", accessToken)
+        put("created_at_epoch_ms", Instant.now().toEpochMilli())
+    }
+
+    Files.writeString(
+        Path.of("tcb-access-token-cache.json"),
+        mapper.writeValueAsString(cacheJson)
+    )
+}
+```
+
+That cache file is application-owned. The SDK does not reuse it automatically. TCB states the token is valid for 24 hours, so your application can reload this file and reuse `x-access-token` until your own expiry policy says to refresh it.
 
 ## 6. Resolve scanned GS1s into serialized GS1 + base GS1
 
@@ -346,6 +386,30 @@ The resolved output log also prints `coupon_gs1_order` so you can verify that co
 
 The input log redacts `tcbAccessKey` and `tcbAccessToken`.
 
+Example validation JSON response:
+
+```json
+{
+  "basket_validation_output": {
+    "discount_in_cents": 100,
+    "applied_coupons": [
+      {
+        "coupon_code": "8112109988459000269133321426026193",
+        "face_value_in_cents": 100,
+        "product_codes": {
+          "primary": [
+            "037000930396",
+            "037000934677"
+          ]
+        }
+      }
+    ]
+  },
+  "not_all_coupons_consumed": true,
+  "error": null
+}
+```
+
 ## 8. Redeem coupons in TCB after discount application
 
 After your retailer system applies the discount, it should redeem the applied coupons in TCB.
@@ -395,6 +459,30 @@ fun main() {
 ```
 
 Note: `enableLogging` only affects validation-time GS1 resolution inside `BasketValidator.validateBasketHelper(...)`. It does not change the output of `TcbCouponRedeemService.redeemCoupons(...)`.
+
+Example redeem JSON response:
+
+```json
+{
+  "status": "success",
+  "status_code": "FULL_REDEMPTION",
+  "newly_redeemed": [
+    {
+      "gs1": "8112109988459000269133321426026193",
+      "master_offer_file": "811210998845900026",
+      "stakeholders_email_domain": []
+    },
+    {
+      "gs1": "8112109988459000269133587761214614",
+      "master_offer_file": "811210998845900026",
+      "stakeholders_email_domain": []
+    }
+  ],
+  "total_gs1s_processed": 2,
+  "message": "Redeemed 2 gs1(s)",
+  "execution_id": "44ac8356-9e97-46a7-afd2-5d826b0a872e"
+}
+```
 
 ## 9. Dependency note
 
@@ -448,5 +536,14 @@ fun main() {
     rollbackResponses.forEach { (gs1, responseJson) ->
         println("$gs1 -> $responseJson")
     }
+}
+```
+
+Example rollback JSON response map:
+
+```json
+{
+  "8112109988459000269133321426026193": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}",
+  "8112109988459000269133587761214614": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}"
 }
 ```
