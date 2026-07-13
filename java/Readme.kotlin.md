@@ -163,6 +163,18 @@ Response:
     {
       "gs1": "8112009988459000049133939957096441",
       "purchase_requirement": { "...": "loaded from local DB using 811200998845900004" }
+    },
+    {
+      "gs1": "8112009988459000199133935966961409",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900019" }
+    },
+    {
+      "gs1": "8112009988459000139133621151540206",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900013" }
+    },
+    {
+      "gs1": "8112009988459000089133401940529627",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900008" }
     }
   ]
 }

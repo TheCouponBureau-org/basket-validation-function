@@ -1,6 +1,8 @@
-# Java integration flow
+# SDK as Code Integration Guide
 
 ![Integration Flow](flow.png)
+
+This guide is based on `Sdk as Code Integration Guide.odt` and aligned with the current Java SDK behavior in this repository.
 
 ## 1. Build the JAR
 
@@ -24,25 +26,16 @@ Copy the fat JAR into your application, for example:
 your-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
-After that, add the JAR from your `lib/` folder to your Java project classpath using your normal build setup.
+Then add that JAR from your `lib/` folder to your project classpath using your normal build setup.
 
-## 3. Step-by-step integration
+## 3. Authentication
 
-This walkthrough uses real serialized coupon examples and `base_gs1` values from `java/POS_Basket_Validation_UseCases.xlsx`.
+After logging in to the TCB Portal, generate:
 
-The `16`-digit fetch code below is illustrative. The workbook contains serialized coupon examples and offer data, but not the fetch-code-to-coupon mapping returned by TCB.
+- `Access Key`
+- `Secret Key`
 
-#### Step 1. Customer scans four serialized coupons and one fetch code
-
-| Scan order | Type | Scanned value |
-| --- | --- | --- |
-| 1 | Serialized coupon | `8112009988459000019133924009755364` |
-| 2 | Serialized coupon | `8112009988459000039133772240739897` |
-| 3 | Serialized coupon | `8112009988459000049133939957096441` |
-| 4 | Serialized coupon | `8112009988459000199133935966961409` |
-| 5 | 16-digit fetch code | `8112209988459000` |
-
-#### Step 2. Get the TCB token
+Use those credentials to obtain a TCB access token. The token is valid for 24 hours.
 
 Request:
 
@@ -62,7 +55,75 @@ Response:
 }
 ```
 
-#### Step 3. Resolve scanned values into serialized coupons and `base_gs1`
+If you want the full token response object:
+
+```java
+TcbTokenService.AccessTokenResponse tokenResponse =
+        TcbTokenService.fetchAccessTokenResponse(
+                "https://api.try.thecouponbureau.org",
+                "YOUR_ACCESS_KEY",
+                "YOUR_SECRET_KEY");
+```
+
+## 4. Sync Master Offer Files into the local database
+
+Retailer should store TCB Master Offer File / Purchase Requirement data locally and key it by `base_gs1`.
+
+Recommended storage model:
+
+- key = `base_gs1`
+- value = full `purchase_requirement` JSON object
+
+The `purchase_requirement` JSON should be stored exactly as received.
+
+Example MOF / purchase requirement payload:
+
+```json
+{
+  "base_gs1": "8112010037000440787",
+  "description": "OFF ONE Oral-B Glide Manual Floss OR Oral-B Expanding Floss OR Oral-B Glide Floss Picks OR Satin Floss",
+  "primary_purchase_gtins": [
+    "300410100391",
+    "300410605513",
+    "300410605520",
+    "300410825850",
+    "037000038665"
+  ],
+  "primary_purchase_save_value": 100,
+  "primary_purchase_requirements": 1,
+  "primary_purchase_req_code": 0,
+  "save_value_code": 0
+}
+```
+
+## 5. Resolve scanned 8112 coupons into serialized GS1 values and `base_gs1`
+
+Supported coupon formats:
+
+- single serialized GS1 coupon
+- concatenated serialized GS1 coupons
+- 16-digit fetch code
+
+Use `parseScannedGs1s(...)` to resolve scanned values into serialized coupons and `base_gs1`.
+
+Important:
+
+- valid serialized GS1 values are parsed locally
+- concatenated serialized GS1 values are parsed locally
+- only 16-digit fetch codes go to TCB
+- each 16-digit fetch code is sent in its own TCB redemption request
+- TCB requests use `no_purchase_requirement = "yes"`
+- only `newly_redeemed` coupons are returned from TCB-backed fetch-code resolution
+
+Example scanned inputs:
+
+| Scan order | Type | Scanned value |
+| --- | --- | --- |
+| 1 | Serialized coupon | `8112009988459000019133924009755364` |
+| 2 | Serialized coupon | `8112009988459000039133772240739897` |
+| 3 | Serialized coupon | `8112009988459000049133939957096441` |
+| 4 | Serialized coupon | `8112009988459000199133935966961409` |
+| 5 | 16-digit fetch code | `8112209988459000` |
 
 Request:
 
@@ -79,10 +140,6 @@ List<TcbScannedGs1Service.SerializedGs1Data> resolved =
                         "8112009988459000199133935966961409",
                         "8112209988459000"));
 ```
-
-- The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
-- The `16`-digit fetch code is sent to TCB in its own redemption request.
-- Assume TCB returns the following additional serialized coupons from that fetch code.
 
 Response:
 
@@ -103,13 +160,13 @@ Response:
 | TCB fetch-code response | `8112009988459000149133342361220548` | `811200998845900014` |
 | TCB fetch-code response | `8112009988459000199133782272284945` | `811200998845900019` |
 
-#### Step 4. Load purchase requirements from the local `base_gs1` database
+## 6. Load purchase requirements from the local `base_gs1` database
 
-Use `base_gs1` as the key into your local offer / purchase-requirement database.
+Use the resolved `base_gs1` to fetch purchase requirements from your local DB.
 
-Response from local DB lookup:
+Example `base_gs1` lookup set from `POS_Basket_Validation_UseCases.xlsx`:
 
-| `base_gs1` | Workbook offer summary |
+| `base_gs1` | Offer summary |
 | --- | --- |
 | `811200998845900001` | Buy 2 Products in Group A and Save $1.00 |
 | `811200998845900003` | Buy any 2 products from A or B and save $1.00 |
@@ -122,18 +179,9 @@ Response from local DB lookup:
 | `811200998845900014` | Spend $5 on chips AND dip OR soda and get $2 off |
 | `811200998845900019` | Buy 1A and 2B and 3C and get $3 off |
 
-#### Step 5. Build coupon objects from resolved GS1 values and local purchase requirements
-
-Request:
+Build coupon objects from resolved GS1 values and local purchase requirements:
 
 ```java
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
-
 Map<String, PurchaseRequirement> purchaseRequirementDb = loadPurchaseRequirementDb();
 
 List<InputCoupon> coupons = new ArrayList<>();
@@ -152,44 +200,23 @@ for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
 }
 ```
 
-Response:
+## 7. Perform local-only coupon rejection first
 
-```json
-{
-  "coupons": [
-    {
-      "gs1": "8112009988459000019133924009755364",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900001" }
-    },
-    {
-      "gs1": "8112009988459000039133772240739897",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900003" }
-    },
-    {
-      "gs1": "8112009988459000049133939957096441",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900004" }
-    },
-    {
-      "gs1": "8112009988459000199133935966961409",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900019" }
-    },
-    {
-      "gs1": "8112009988459000139133621151540206",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900013" }
-    },
-    {
-      "gs1": "8112009988459000089133401940529627",
-      "purchase_requirement": { "...": "loaded from local DB using 811200998845900008" }
-    }
-  ]
-}
-```
+Before doing the TCB-backed validation pass, run a local-only pass one coupon at a time.
 
-#### Step 6. Build the basket and perform local rejection first
+Important:
 
-Request basket:
+- do **not** set `tcbBaseUrl`
+- do **not** set `tcbAccessKey`
+- do **not** set `tcbAccessToken`
 
-Basket example:
+This makes `validateBasketHelper(...)` run locally using only:
+
+- basket
+- `gs1`
+- locally loaded `purchase_requirement`
+
+Example basket:
 
 | Product code | Qty | Price |
 | --- | --- | --- |
@@ -201,27 +228,9 @@ Basket example:
 | `7106919588011` | 1 | `1.81` |
 | `8952803493171` | 1 | `4.67` |
 
-Call `validateBasketHelper(...)` one coupon at a time in this step.
-
-Important:
-
-- Do **not** set `tcbBaseUrl`
-- Do **not** set `tcbAccessKey`
-- Do **not** set `tcbAccessToken`
-
-That makes `validateBasketHelper(...)` run as a local-only validation pass using only the basket and the locally loaded `purchase_requirement`.
-
 Request:
 
 ```java
-import java.util.ArrayList;
-import java.util.List;
-
-import org.thecouponbureau.validate.basket.core.BasketValidator;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
-
 List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
 
 for (InputCoupon coupon : coupons) {
@@ -259,84 +268,34 @@ Response:
 }
 ```
 
-Coupons kept after local filtering for the second pass:
+## 8. Build the final validation input
 
-- `8112009988459000019133924009755364`
-- `8112009988459000039133772240739897`
-- `8112009988459000049133939957096441`
+In the second pass, send only `gs1` values in `coupons`.
 
-#### Step 7. Build the validation input
-
-In this second pass, send only `gs1` values in `coupons`.
-
-Do not send `purchase_requirement` here.
+Do not send `purchase_requirement` in this step.
 
 Reason:
 
 - `validateBasketHelper(...)` will call TCB `retailer/redeem` with `pre_process = "yes"`
-- that TCB call validates whether the coupon is currently usable
-- the SDK then uses the updated `purchase_requirement` returned by TCB for final basket validation
+- TCB validates whether each coupon is currently usable
+- the SDK uses the updated `purchase_requirement` returned by TCB for final basket validation
 
 Request:
 
 ```java
-import java.util.ArrayList;
-import java.util.List;
-
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
-
-List<BasketItem> basket = new ArrayList<>();
-
-BasketItem item1 = new BasketItem();
-item1.productCode = "037000930396";
-item1.price = 1.29;
-item1.quantity = 1;
-item1.unit = "item";
-basket.add(item1);
-
-BasketItem item2 = new BasketItem();
-item2.productCode = "037000934677";
-item2.price = 1.34;
-item2.quantity = 1;
-item2.unit = "item";
-basket.add(item2);
-
-BasketItem item3 = new BasketItem();
-item3.productCode = "030772076835";
-item3.price = 3.07;
-item3.quantity = 2;
-item3.unit = "item";
-basket.add(item3);
-
-BasketItem item4 = new BasketItem();
-item4.productCode = "037000534358";
-item4.price = 6.62;
-item4.quantity = 1;
-item4.unit = "item";
-basket.add(item4);
-
-BasketItem item5 = new BasketItem();
-item5.productCode = "037000808893";
-item5.price = 5.64;
-item5.quantity = 1;
-item5.unit = "item";
-basket.add(item5);
-
-List<InputCoupon> coupons = new ArrayList<>();
-for (String gs1 : locallyEligibleCoupons.stream().map(coupon -> coupon.gs1).toList()) {
+List<InputCoupon> couponsForFinalValidation = new ArrayList<>();
+for (InputCoupon localCoupon : locallyEligibleCoupons) {
     InputCoupon coupon = new InputCoupon();
-    coupon.gs1 = gs1;
-    coupons.add(coupon);
+    coupon.gs1 = localCoupon.gs1;
+    couponsForFinalValidation.add(coupon);
 }
 
 BasketValidationInput input = new BasketValidationInput();
 input.basket = basket;
-input.coupons = coupons;
+input.coupons = couponsForFinalValidation;
 ```
 
-Resulting input payload shape:
+Input payload shape:
 
 ```json
 {
@@ -355,7 +314,7 @@ Resulting input payload shape:
 }
 ```
 
-#### Step 8. Call `validateBasketHelper(...)`
+## 9. Get the applicable discount
 
 Request:
 
@@ -367,13 +326,13 @@ input.tcbAccessToken = accessToken;
 ValidationResult result = BasketValidator.validateBasketHelper(input);
 ```
 
-What happens inside this second validation pass:
+What happens inside this call:
 
-1. TCB `retailer/redeem` is called with `pre_process = "yes"`.
-2. TCB validates whether each coupon is currently usable.
-3. Coupons not returned in `newly_redeemed` are removed.
-4. The SDK uses the updated `purchase_requirement` returned by TCB.
-5. Final basket validation runs on the TCB-confirmed coupon set.
+1. TCB `retailer/redeem` is called with `pre_process = "yes"`
+2. TCB validates whether each coupon is currently usable
+3. Coupons not returned in `newly_redeemed` are removed
+4. The SDK uses the updated `purchase_requirement` returned by TCB
+5. Final basket validation runs on the TCB-confirmed coupon set
 
 Response:
 
@@ -417,11 +376,18 @@ Response:
 }
 ```
 
-#### Step 8. Apply the discount
+Interpretation:
 
-Use `result.basketValidationOutput.discountInCents` as the transaction discount.
+- `discount_in_cents` = total discount to apply
+- `applied_coupons` = coupons that should be attached to the transaction
+- `product_codes.primary` = products that satisfied primary requirements
+- `product_codes.secondary` = products that satisfied secondary requirements
+- `product_codes.third` = products that satisfied third-level requirements
+- `error` is diagnostic and can be ignored during normal successful checkout handling
 
-Response used by POS:
+## 10. Apply the discount
+
+Use:
 
 ```json
 {
@@ -429,17 +395,49 @@ Response used by POS:
 }
 ```
 
-#### Step 9. Redeem coupons in TCB after discount application
+as the transaction discount result from the SDK.
+
+For each item in `applied_coupons`:
+
+- attach the coupon to the matching products in `product_codes`
+- apply `face_value_in_cents` as the manufacturer coupon discount
+
+## 11. Anti-stacking
+
+The SDK already includes anti-stacking across 8112 coupons.
+
+As each coupon is applied:
+
+- qualifying basket items are consumed
+- remaining coupons are evaluated against the reduced basket
+
+No extra anti-stacking logic is required inside the 8112 coupon engine.
+
+If retailer already has its own digital coupon platform, a simple cross-engine anti-stacking approach is:
+
+1. run the retailer’s existing digital coupon engine first
+2. identify products that already consumed retailer coupon value
+3. remove those products from the basket
+4. pass the reduced basket and 8112 coupons into this SDK
+
+This prevents overlap:
+
+- between retailer digital coupons and 8112 coupons
+- between multiple 8112 coupons
+
+## 12. Post-transaction coupon redemption
+
+After discount application and successful transaction completion, redeem every applied 8112 coupon in TCB.
 
 Request:
 
 ```java
 String redeemResponseJson =
-        org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService.redeemCoupons(
+        TcbCouponRedeemService.redeemCoupons(
                 "https://api.try.thecouponbureau.org",
                 "YOUR_ACCESS_KEY",
                 accessToken,
-                Arrays.asList(
+                List.of(
                         "8112009988459000019133924009755364",
                         "8112009988459000039133772240739897",
                         "8112009988459000049133939957096441"));
@@ -470,17 +468,25 @@ Response:
 }
 ```
 
-#### Step 10. Roll back redeemed coupons if the transaction is voided
+Notes:
+
+- redemption uses TCB `retailer/redeem` without `pre_process`
+- the SDK generates `client_txn_id` internally for idempotency
+- if the same request is retried due to timeout or network interruption, the same `client_txn_id` is reused for that retry path
+
+## 13. Rollback redeemed coupons if needed
+
+If the transaction is voided or reversed, call rollback.
 
 Request:
 
 ```java
 Map<String, String> rollbackResponses =
-        org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService.rollbackCoupons(
+        TcbCouponRollbackService.rollbackCoupons(
                 "https://api.try.thecouponbureau.org",
                 "YOUR_ACCESS_KEY",
                 accessToken,
-                Arrays.asList(
+                List.of(
                         "8112009988459000019133924009755364",
                         "8112009988459000039133772240739897",
                         "8112009988459000049133939957096441"));
@@ -495,3 +501,36 @@ Response:
   "8112009988459000049133939957096441": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}"
 }
 ```
+
+## 14. Clearing and settlement
+
+After successful redemption:
+
+- retailer can generate the industry-standard coupon redemption file
+- retailer can send that file to the clearinghouse
+
+Because coupons were already authenticated, validated, and redeemed through TCB, the redemption file becomes the settlement record for manufacturer reimbursement.
+
+## 15. Retry behavior for TCB API calls
+
+All SDK TCB API calls use shared retry logic.
+
+Backoff sequence:
+
+- `50 ms`
+- `100 ms`
+- `200 ms`
+
+Total attempts:
+
+- `4`
+- 1 initial request
+- up to 3 retries
+
+This retry logic is shared across:
+
+- token fetch
+- fetch-code resolution
+- coupon validation resolution
+- coupon redemption
+- coupon rollback
