@@ -122,7 +122,51 @@ Response from local DB lookup:
 | `811200998845900014` | Spend $5 on chips AND dip OR soda and get $2 off |
 | `811200998845900019` | Buy 1A and 2B and 3C and get $3 off |
 
-#### Step 5. Build the basket and perform local rejection first
+#### Step 5. Build coupon objects from resolved GS1 values and local purchase requirements
+
+Request:
+
+```kotlin
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+
+val purchaseRequirementDb: Map<String, PurchaseRequirement> = loadPurchaseRequirementDb()
+
+val coupons = mutableListOf<InputCoupon>()
+for (item in resolved) {
+    val purchaseRequirement = purchaseRequirementDb[item.baseGs1] ?: continue
+
+    coupons.add(
+        InputCoupon().apply {
+            gs1 = item.gs1
+            this.purchaseRequirement = purchaseRequirement
+        }
+    )
+}
+```
+
+Response:
+
+```json
+{
+  "coupons": [
+    {
+      "gs1": "8112009988459000019133924009755364",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900001" }
+    },
+    {
+      "gs1": "8112009988459000039133772240739897",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900003" }
+    },
+    {
+      "gs1": "8112009988459000049133939957096441",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900004" }
+    }
+  ]
+}
+```
+
+#### Step 6. Build the basket and perform local rejection first
 
 Request basket:
 
@@ -200,7 +244,7 @@ Coupons kept after local filtering for the second pass:
 - `8112009988459000039133772240739897`
 - `8112009988459000049133939957096441`
 
-#### Step 6. Build the validation input
+#### Step 7. Build the validation input
 
 In this second pass, send only `gs1` values in `coupons`.
 
@@ -283,7 +327,7 @@ Resulting input payload shape:
 }
 ```
 
-#### Step 7. Call `validateBasketHelper(...)`
+#### Step 8. Call `validateBasketHelper(...)`
 
 Request:
 
