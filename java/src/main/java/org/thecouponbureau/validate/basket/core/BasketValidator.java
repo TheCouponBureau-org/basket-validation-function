@@ -11,7 +11,6 @@ import org.thecouponbureau.validate.basket.Services.BasketReducerService;
 import org.thecouponbureau.validate.basket.Services.TcbCouponResolutionService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
 import org.thecouponbureau.validate.basket.Services.RequirementService;
-import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
 import org.thecouponbureau.validate.basket.helper.BasketHelper.Status;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
@@ -27,19 +26,12 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Validat
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 /**
- * =====================================================
- * BasketValidator
- * =====================================================
+ * Main orchestration entrypoint for basket validation.
  *
- * Main orchestration engine for coupon validation.
- *
- * Flow:
- * 1. Normalize basket (merge duplicates)
- * 2. Iterate coupons one by one
- * 3. Check eligibility (RequirementService)
- * 4. Calculate discount (DiscountService)
- * 5. Reduce basket (consume items)
- * 6. Accumulate results
+ * <p>The validator first normalizes the basket, optionally removes obviously
+ * non-applicable input coupons that already include a purchase requirement,
+ * optionally refreshes remaining coupon requirements through TCB, and then
+ * applies coupons sequentially while consuming qualifying basket items.
  */
 public class BasketValidator {
 
@@ -52,20 +44,18 @@ public class BasketValidator {
     public static final Status NEGATIVE_STATUS = new Status(false);
     public static final Status POSITIVE_STATUS = new Status(true);
 
-    // =====================================================
-    // Main public API
-    // =====================================================
+    /**
+     * Validates a basket against the provided coupons.
+     *
+     * <p>If TCB credentials are present, coupons that still need server-side
+     * resolution are first sent through the TCB pre-process redeem flow so the
+     * SDK can validate coupon state and hydrate purchase requirements before the
+     * final basket pass.
+     */
     public static ValidationResult validateBasketHelper(
             BasketValidationInput basketValidationInput) {
+        BasketValidationOutput defaultOutput = createEmptyOutput();
 
-        // Default empty output
-        BasketValidationOutput defaultOutput = new BasketValidationOutput();
-        defaultOutput.discountInCents = 0;
-        defaultOutput.appliedCoupons = new ArrayList<>();
-
-        // =====================================================
-        // Input validation
-        // =====================================================
         if (basketValidationInput == null
                 || basketValidationInput.basket == null
                 || basketValidationInput.coupons == null) {
@@ -77,10 +67,7 @@ public class BasketValidator {
                     null);
         }
 
-        // Initialize output
-        BasketValidationOutput basketValidationOutput = new BasketValidationOutput();
-        basketValidationOutput.discountInCents = 0;
-        basketValidationOutput.appliedCoupons = new ArrayList<>();
+        BasketValidationOutput basketValidationOutput = createEmptyOutput();
 
         boolean enableLogging = Boolean.TRUE.equals(basketValidationInput.enableLogging);
 
@@ -95,157 +82,135 @@ public class BasketValidator {
                     inputError.details);
         }
 
-        // Convert the external input contract into the internal coupon model.
-        // At this point coupons may or may not already include purchaseRequirement.
-        List<Coupon> couponsToProcess = toInternalCoupons(basketValidationInput.coupons);
-        List<BasketItem> normalizedInputBasket =
-                BasketHelper.mergeBasketItems(basketValidationInput.basket);
+        List<BasketItem> newBasket = BasketHelper.mergeBasketItems(
+                basketValidationInput.basket);
+        List<Coupon> couponsToProcess = prepareCouponsForValidation(
+                basketValidationInput,
+                newBasket,
+                enableLogging);
 
-        // Coupons that already came with purchaseRequirement can be screened
-        // immediately. This avoids unnecessary TCB calls for coupons that can
-        // never apply to the current basket.
+        for (Coupon coupon : couponsToProcess) {
+            CouponApplicationResult couponApplicationResult =
+                    applyCoupon(newBasket, coupon);
+
+            if (couponApplicationResult == null) {
+                continue;
+            }
+
+            newBasket = couponApplicationResult.remainingBasket;
+            basketValidationOutput.appliedCoupons.add(
+                    couponApplicationResult.appliedCoupon);
+            basketValidationOutput.discountInCents +=
+                    couponApplicationResult.appliedCoupon.faceValueInCents;
+        }
+
+        ValidationResult result = new ValidationResult();
+        result.basketValidationOutput = basketValidationOutput;
+        return result;
+    }
+
+    private static BasketValidationOutput createEmptyOutput() {
+        BasketValidationOutput output = new BasketValidationOutput();
+        output.discountInCents = 0;
+        output.appliedCoupons = new ArrayList<>();
+        return output;
+    }
+
+    private static List<Coupon> prepareCouponsForValidation(
+            BasketValidationInput input,
+            List<BasketItem> normalizedInputBasket,
+            boolean enableLogging) {
+
+        List<Coupon> couponsToProcess = toInternalCoupons(input.coupons);
         couponsToProcess = filterApplicableInputCoupons(
                 normalizedInputBasket,
                 couponsToProcess);
 
-        // The remaining coupons are redeemed through TCB so the SDK can refresh
-        // or populate the internal purchaseRequirement/baseGs1 fields from the
-        // source of truth before final validation is run.
-        if (hasCouponsToResolve(couponsToProcess)
-                && hasTcbCredentials(basketValidationInput)) {
-            couponsToProcess = TcbCouponResolutionService.resolveCoupons(
-                    basketValidationInput.tcbBaseUrl,
-                    basketValidationInput.tcbAccessKey,
-                    basketValidationInput.tcbAccessToken,
-                    couponsToProcess,
-                    enableLogging
-            );
+        if (!hasCouponsToResolve(couponsToProcess) || !hasTcbCredentials(input)) {
+            return couponsToProcess;
         }
 
-        // Step 1: Normalize basket (merge duplicates)
-        List<BasketItem> newBasket = normalizedInputBasket;
+        return TcbCouponResolutionService.resolveCoupons(
+                input.tcbBaseUrl,
+                input.tcbAccessKey,
+                input.tcbAccessToken,
+                couponsToProcess,
+                enableLogging
+        );
+    }
 
-        // =====================================================
-        // Process each coupon sequentially
-        // =====================================================
-        for (Coupon coupon : couponsToProcess) {
+    private static CouponApplicationResult applyCoupon(
+            List<BasketItem> currentBasket,
+            Coupon coupon) {
 
-            // Skip invalid coupon
-            if (coupon == null || coupon.purchaseRequirement == null) {
-                System.err.println("Coupon does not have purchase requirement");
-                continue;
-            }
-
-            // =====================================================
-            // Step 2: Calculate current basket total
-            // =====================================================
-            long newBasketTotalPrice = 0;
-
-            for (BasketItem item : newBasket) {
-                newBasketTotalPrice +=
-                        BasketHelper.toCents(item.price) * item.quantity;
-            }
-
-            // =====================================================
-            // Step 3: Check if basket meets coupon requirements
-            // =====================================================
-            MeetsRequirementsResult meetsResult =
-                    RequirementService.meetsRequirements(newBasket, coupon);
-            
-            if (meetsResult.status) {
-
-                // Check if only primary purchase exists
-                boolean hasOnlyPrimaryPurchase =
-                        meetsResult.unitsToPurchase2 == null &&
-                        meetsResult.unitsToPurchase3 == null;
-                
-
-                // =====================================================
-                // Step 4: Initial discount calculation (pre-consumption)
-                // =====================================================
-                long discountInCents =
-                        DiscountService.getDiscountInCents(
-                                coupon,
-                                meetsResult.basketItems,
-                                hasOnlyPrimaryPurchase,
-                                newBasketTotalPrice,
-                                new ArrayList<>()
-                        );
-                
-                // Skip if no valid discount
-                if (discountInCents <= 0) {
-                    continue;
-                }
-
-                // Safety check
-                if (meetsResult.basketItems == null
-                        || meetsResult.basketItems.isEmpty()) {
-                    continue;
-                }
-
-                // =====================================================
-                // Step 5: Reduce basket (consume items for coupon)
-                // =====================================================
-                ReduceBasketResult reducedBasket =
-                        BasketReducerService.reduceBasket(
-                                newBasket,
-                                meetsResult.basketItems,
-                                new UnitsToPurchaseHolder(
-                                        meetsResult.unitsToPurchase,
-                                        meetsResult.unitsToPurchase2,
-                                        meetsResult.unitsToPurchase3
-                                )
-                        );
-
-                List<BasketItem> consumedBasket =
-                        reducedBasket.consumedBasket;
-
-                // =====================================================
-                // Step 6: Recalculate discount (post-consumption)
-                // (Important: ensures discount is based on actual consumed items)
-                // =====================================================
-                discountInCents =
-                        DiscountService.getDiscountInCents(
-                                coupon,
-                                meetsResult.basketItems,
-                                hasOnlyPrimaryPurchase,
-                                newBasketTotalPrice,
-                                consumedBasket
-                        );
-                // Update remaining basket
-                newBasket = reducedBasket.newBasket;
-                
-         
-
-                // =====================================================
-                // Step 7: Build applied coupon result
-                // =====================================================
-                AppliedCoupon appliedCoupon = new AppliedCoupon();
-
-                appliedCoupon.couponCode = coupon.gs1;
-                appliedCoupon.faceValueInCents = discountInCents;
-                
-                // Group consumed product codes
-                appliedCoupon.productCodes =
-                        BasketHelper.getProductCodes(consumedBasket);
-
-                basketValidationOutput.appliedCoupons.add(appliedCoupon);
-                
-
-                // Add to total discount
-                if (discountInCents > 0) {
-                    basketValidationOutput.discountInCents += discountInCents;
-                }
-            }
+        if (coupon == null || coupon.purchaseRequirement == null) {
+            return null;
         }
 
-        // =====================================================
-        // Final result
-        // =====================================================
-        ValidationResult result = new ValidationResult();
-        result.basketValidationOutput = basketValidationOutput;
+        long basketTotalInCents = calculateBasketTotalInCents(currentBasket);
+        MeetsRequirementsResult meetsResult =
+                RequirementService.meetsRequirements(currentBasket, coupon);
 
+        if (meetsResult == null || !meetsResult.status) {
+            return null;
+        }
+
+        boolean hasOnlyPrimaryPurchase =
+                meetsResult.unitsToPurchase2 == null
+                        && meetsResult.unitsToPurchase3 == null;
+
+        long discountInCents = DiscountService.getDiscountInCents(
+                coupon,
+                meetsResult.basketItems,
+                hasOnlyPrimaryPurchase,
+                basketTotalInCents,
+                new ArrayList<>());
+
+        if (discountInCents <= 0
+                || meetsResult.basketItems == null
+                || meetsResult.basketItems.isEmpty()) {
+            return null;
+        }
+
+        ReduceBasketResult reducedBasket = BasketReducerService.reduceBasket(
+                currentBasket,
+                meetsResult.basketItems,
+                new UnitsToPurchaseHolder(
+                        meetsResult.unitsToPurchase,
+                        meetsResult.unitsToPurchase2,
+                        meetsResult.unitsToPurchase3));
+
+        List<BasketItem> consumedBasket = reducedBasket.consumedBasket;
+        discountInCents = DiscountService.getDiscountInCents(
+                coupon,
+                meetsResult.basketItems,
+                hasOnlyPrimaryPurchase,
+                basketTotalInCents,
+                consumedBasket);
+
+        if (discountInCents <= 0) {
+            return null;
+        }
+
+        AppliedCoupon appliedCoupon = new AppliedCoupon();
+        appliedCoupon.couponCode = coupon.gs1;
+        appliedCoupon.faceValueInCents = discountInCents;
+        appliedCoupon.productCodes = BasketHelper.getProductCodes(consumedBasket);
+
+        CouponApplicationResult result = new CouponApplicationResult();
+        result.appliedCoupon = appliedCoupon;
+        result.remainingBasket = reducedBasket.newBasket;
         return result;
+    }
+
+    private static long calculateBasketTotalInCents(List<BasketItem> basket) {
+        long basketTotalInCents = 0L;
+
+        for (BasketItem item : basket) {
+            basketTotalInCents += BasketHelper.toCents(item.price) * item.quantity;
+        }
+
+        return basketTotalInCents;
     }
 
     private static boolean hasCouponsToResolve(List<Coupon> coupons) {
@@ -460,5 +425,10 @@ public class BasketValidator {
         result.basketValidationOutput = defaultOutput;
         result.error = buildValidationError(code, message, details);
         return result;
+    }
+
+    private static class CouponApplicationResult {
+        private AppliedCoupon appliedCoupon;
+        private List<BasketItem> remainingBasket;
     }
 }

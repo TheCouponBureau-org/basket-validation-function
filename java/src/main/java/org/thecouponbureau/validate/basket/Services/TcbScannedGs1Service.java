@@ -23,6 +23,15 @@ public class TcbScannedGs1Service {
     private static final int SINGLE_REDEEM_CODE_LENGTH = 16;
     private static final String CONSUMER_SERIALIZED_PREFIX = "8112";
 
+    /**
+     * Resolves scanned coupon values into serialized GS1 plus base GS1 pairs.
+     *
+     * <p>Serialized consumer coupons that already begin with {@code 8112} are
+     * parsed locally. Only unresolved 16-digit fetch codes are sent to TCB,
+     * with one redeem request per fetch code and all requests executed in
+     * parallel. The TCB requests set {@code no_purchase_requirement=yes} to
+     * keep the response lean because this API only returns GS1 and base GS1.
+     */
     public static List<SerializedGs1Data> parseScannedGs1s(
             String baseUrl,
             String accessKey,
@@ -91,6 +100,11 @@ public class TcbScannedGs1Service {
         return batches;
     }
 
+    /**
+     * Parses one serialized GS1 or a concatenated string of serialized GS1s
+     * entirely locally when the value already matches the consumer coupon
+     * format.
+     */
     static List<SerializedGs1Data> tryParseConsumerSerializedGs1s(String scannedGs1) {
         List<SerializedGs1Data> parsedGs1s = new ArrayList<>();
 

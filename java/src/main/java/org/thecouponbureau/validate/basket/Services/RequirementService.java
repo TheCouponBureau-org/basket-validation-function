@@ -20,16 +20,15 @@ public class RequirementService {
     private static final List<String> PURCHASE_GROUPS =
             Arrays.asList(null, "second_purchase", "third_purchase");
 
-    // =====================================================
-    // Main entry: Checks if basket satisfies coupon requirements
-    // =====================================================
+    /**
+     * Evaluates whether the current basket satisfies the purchase requirement
+     * attached to the coupon.
+     */
     public static MeetsRequirementsResult meetsRequirements(
             List<BasketItem> basket,
             Coupon coupon) {
 
-        // ❗ Coupon must have purchase rules
         if (coupon.purchaseRequirement == null) {
-            System.err.println("Coupon does not have purchase requirement");
             return MeetsRequirementsResult.negative();
         }
 

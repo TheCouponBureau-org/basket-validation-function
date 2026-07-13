@@ -11,6 +11,16 @@ public class TcbApiService {
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final long[] RETRY_BACKOFF_MS = new long[] {50L, 100L, 200L};
 
+    private TcbApiService() {
+    }
+
+    /**
+     * Executes a TCB HTTP request with shared retry handling.
+     *
+     * <p>The SDK retries up to three times after the initial attempt using
+     * backoffs of 50ms, 100ms, and 200ms. This keeps token fetch, coupon
+     * resolution, redeem, and rollback behavior consistent in one place.
+     */
     public static HttpResponse<String> sendWithRetry(
             HttpRequest request,
             String operationName) {
