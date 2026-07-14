@@ -9,6 +9,12 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * =====================================================
@@ -39,6 +45,7 @@ public class basketValidationResults {
      */
     public static class BasketValidationInput {
         public List<BasketItem> basket;
+        @JsonDeserialize(contentUsing = InputCouponDeserializer.class)
         public List<InputCoupon> coupons;
         public String tcbBaseUrl;
         public String tcbAccessKey;
@@ -138,6 +145,40 @@ public class basketValidationResults {
                 return;
             }
             additionalFields.put(key, value);
+        }
+    }
+
+    /**
+     * Supports both coupon input shapes:
+     * - "811200..."
+     * - { "gs1": "811200...", "purchase_requirement": { ... } }
+     */
+    public static class InputCouponDeserializer extends JsonDeserializer<InputCoupon> {
+        @Override
+        public InputCoupon deserialize(
+                JsonParser parser,
+                DeserializationContext context) throws java.io.IOException {
+
+            JsonToken token = parser.currentToken();
+
+            if (token == JsonToken.VALUE_STRING) {
+                InputCoupon coupon = new InputCoupon();
+                coupon.gs1 = parser.getValueAsString();
+                return coupon;
+            }
+
+            if (token == JsonToken.START_OBJECT) {
+                JsonNode node = parser.getCodec().readTree(parser);
+                return parser.getCodec().treeToValue(node, InputCoupon.class);
+            }
+
+            if (token == JsonToken.VALUE_NULL) {
+                return null;
+            }
+
+            return (InputCoupon) context.reportInputMismatch(
+                    InputCoupon.class,
+                    "coupon entry must be a gs1 string or coupon object");
         }
     }
 

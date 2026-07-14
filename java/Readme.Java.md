@@ -267,7 +267,10 @@ Coupons kept after local filtering for the second pass:
 
 #### Step 7. Build the validation input
 
-In this second pass, send only `gs1` values in `coupons`.
+In this second pass, `coupons` can be sent in either of these supported shapes:
+
+- array of GS1 strings
+- array of coupon objects with `gs1`
 
 Do not send `purchase_requirement` here.
 
@@ -348,9 +351,9 @@ Resulting input payload shape:
     { "product_code": "037000808893", "price": 5.64, "quantity": 1, "unit": "item" }
   ],
   "coupons": [
-    { "gs1": "8112009988459000019133924009755364" },
-    { "gs1": "8112009988459000039133772240739897" },
-    { "gs1": "8112009988459000049133939957096441" }
+    "8112009988459000019133924009755364",
+    "8112009988459000039133772240739897",
+    "8112009988459000049133939957096441"
   ]
 }
 ```

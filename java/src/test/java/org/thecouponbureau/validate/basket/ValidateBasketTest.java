@@ -79,6 +79,70 @@ public class ValidateBasketTest {
 	}
 
 	@Test
+	@DisplayName("Coupon input supports serialized gs1 strings")
+	void supportsCouponInputAsSerializedGs1Strings() {
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+			String jsonInput = "{"
+					+ "\"basket\":["
+					+ "{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"},"
+					+ "{\"product_code\":\"037000934677\",\"price\":1.34,\"quantity\":1,\"unit\":\"item\"}"
+					+ "],"
+					+ "\"coupons\":[\"8112009988459000019133924009755364\"]"
+					+ "}";
+
+			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
+
+			assertNotNull(input.coupons);
+			assertEquals(1, input.coupons.size());
+			assertEquals("8112009988459000019133924009755364", input.coupons.get(0).gs1);
+			assertNull(input.coupons.get(0).purchaseRequirement);
+		} catch (Exception e) {
+			fail("Test failed due to exception: " + e.getMessage());
+		}
+	}
+
+	@Test
+	@DisplayName("Coupon input supports mixed string and object shapes")
+	void supportsMixedCouponInputShapes() {
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+			String jsonInput = "{"
+					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
+					+ "\"coupons\":["
+					+ "\"8112009988459000019133924009755364\","
+					+ "{"
+					+ "\"gs1\":\"8112009988459000039133772240739897\","
+					+ "\"purchase_requirement\":{"
+					+ "\"primary_purchase_gtins\":[\"037000930396\"],"
+					+ "\"primary_purchase_save_value\":100,"
+					+ "\"primary_purchase_requirements\":1,"
+					+ "\"primary_purchase_req_code\":0,"
+					+ "\"save_value_code\":0"
+					+ "}"
+					+ "}"
+					+ "]"
+					+ "}";
+
+			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
+
+			assertNotNull(input.coupons);
+			assertEquals(2, input.coupons.size());
+			assertEquals("8112009988459000019133924009755364", input.coupons.get(0).gs1);
+			assertNull(input.coupons.get(0).purchaseRequirement);
+			assertEquals("8112009988459000039133772240739897", input.coupons.get(1).gs1);
+			assertNotNull(input.coupons.get(1).purchaseRequirement);
+			assertEquals(1, input.coupons.get(1).purchaseRequirement.primaryPurchaseRequirements);
+		} catch (Exception e) {
+			fail("Test failed due to exception: " + e.getMessage());
+		}
+	}
+
+	@Test
 	@DisplayName("Coupon input still rejects unsupported extra fields")
 	void rejectsCouponInputWithUnsupportedExtraFields() {
 		try {
