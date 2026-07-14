@@ -68,6 +68,10 @@ Response:
 Request:
 
 ```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.PropertyNamingStrategies
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
+
 val resolved = TcbScannedGs1Service.parseScannedGs1s(
     "https://api.try.thecouponbureau.org/",
     "YOUR_ACCESS_KEY",
@@ -80,6 +84,17 @@ val resolved = TcbScannedGs1Service.parseScannedGs1s(
         "8112209988459000"
     )
 )
+
+val mapper = ObjectMapper().apply {
+    propertyNamingStrategy = PropertyNamingStrategies.SNAKE_CASE
+}
+
+println("Resolved scanned GS1 response:")
+println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(resolved))
+
+resolved.forEach { item ->
+    println("serialized_gs1=${item.gs1}, base_gs1=${item.baseGs1}")
+}
 ```
 
 - The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
@@ -87,6 +102,31 @@ val resolved = TcbScannedGs1Service.parseScannedGs1s(
 - Assume TCB returns the following additional serialized coupons from that fetch code.
 
 Response:
+
+```json
+[
+  {
+    "gs1": "8112009988459000019133924009755364",
+    "base_gs1": "811200998845900001"
+  },
+  {
+    "gs1": "8112009988459000039133772240739897",
+    "base_gs1": "811200998845900003"
+  },
+  {
+    "gs1": "8112009988459000049133939957096441",
+    "base_gs1": "811200998845900004"
+  },
+  {
+    "gs1": "8112009988459000199133935966961409",
+    "base_gs1": "811200998845900019"
+  },
+  {
+    "gs1": "8112009988459000019133520317194861",
+    "base_gs1": "811200998845900001"
+  }
+]
+```
 
 | Source | Serialized coupon | `base_gs1` |
 | --- | --- | --- |
