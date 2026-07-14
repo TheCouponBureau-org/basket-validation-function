@@ -338,41 +338,38 @@ Response:
 
 ```json
 {
-  "basket_validation_output": {
-    "discount_in_cents": 300,
-    "applied_coupons": [
-      {
-        "coupon_code": "8112009988459000019133924009755364",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "primary": [
-            "037000930396",
-            "037000934677"
-          ]
-        }
-      },
-      {
-        "coupon_code": "8112009988459000039133772240739897",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "secondary": [
-            "030772076835"
-          ]
-        }
-      },
-      {
-        "coupon_code": "8112009988459000049133939957096441",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "third": [
-            "037000534358",
-            "037000808893"
-          ]
-        }
+  "discount_in_cents": 300,
+  "applied_coupons": [
+    {
+      "coupon_code": "8112009988459000019133924009755364",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "037000930396",
+          "037000934677"
+        ]
       }
-    ]
-  },
-  "error": null
+    },
+    {
+      "coupon_code": "8112009988459000039133772240739897",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "030772076835"
+        ]
+      }
+    },
+    {
+      "coupon_code": "8112009988459000049133939957096441",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "037000534358",
+          "037000808893"
+        ]
+      }
+    }
+  ]
 }
 ```
 
@@ -380,10 +377,7 @@ Interpretation:
 
 - `discount_in_cents` = total discount to apply
 - `applied_coupons` = coupons that should be attached to the transaction
-- `product_codes.primary` = products that satisfied primary requirements
-- `product_codes.secondary` = products that satisfied secondary requirements
-- `product_codes.third` = products that satisfied third-level requirements
-- `error` is diagnostic and can be ignored during normal successful checkout handling
+- `product_codes.gtins` = combined list of consumed product codes used for the coupon
 
 ## 10. Apply the discount
 

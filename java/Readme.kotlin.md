@@ -365,41 +365,38 @@ Response:
 
 ```json
 {
-  "basket_validation_output": {
-    "discount_in_cents": 300,
-    "applied_coupons": [
-      {
-        "coupon_code": "8112009988459000019133924009755364",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "primary": [
-            "037000930396",
-            "037000934677"
-          ]
-        }
-      },
-      {
-        "coupon_code": "8112009988459000039133772240739897",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "secondary": [
-            "030772076835"
-          ]
-        }
-      },
-      {
-        "coupon_code": "8112009988459000049133939957096441",
-        "face_value_in_cents": 100,
-        "product_codes": {
-          "third": [
-            "037000534358",
-            "037000808893"
-          ]
-        }
+  "discount_in_cents": 300,
+  "applied_coupons": [
+    {
+      "coupon_code": "8112009988459000019133924009755364",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "037000930396",
+          "037000934677"
+        ]
       }
-    ]
-  },
-  "error": null
+    },
+    {
+      "coupon_code": "8112009988459000039133772240739897",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "030772076835"
+        ]
+      }
+    },
+    {
+      "coupon_code": "8112009988459000049133939957096441",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": [
+          "037000534358",
+          "037000808893"
+        ]
+      }
+    }
+  ]
 }
 ```
 

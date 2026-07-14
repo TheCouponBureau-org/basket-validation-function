@@ -6,7 +6,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 /**
  * =====================================================
@@ -53,10 +55,12 @@ public class basketValidationResults {
      */
     public static class ValidationResult {
 
-        // Detailed output of basket validation
+        // Expose basket validation output directly at the top level in JSON.
+        @JsonUnwrapped
         public BasketValidationOutput basketValidationOutput;
 
-        // Present when validation fails before processing
+        // Kept internal for Java callers; not part of the serialized response.
+        @JsonIgnore
         public ValidationError error;
     }
 
@@ -89,9 +93,10 @@ public class basketValidationResults {
         // Discount value applied
         public long faceValueInCents;
 
-        // Mapping of purchase type → product codes
+        // Combined list of all consumed product codes across primary,
+        // secondary, and third purchase groups.
         // Example:
-        // { "primary": ["A", "B"], "second": ["C"] }
+        // { "gtins": ["A", "B", "C"] }
         public Map<String, List<String>> productCodes;
     }
 

@@ -44,6 +44,10 @@ public class ValidateBasketTest {
 
 			// ✅ Assertion
 			assertNotNull(result, "Result should not be null");
+			assertTrue(output.contains("\"discount_in_cents\""));
+			assertTrue(output.contains("\"applied_coupons\""));
+			assertFalse(output.contains("\"basket_validation_output\""));
+			assertFalse(output.contains("\"error\""));
 
 		} catch (Exception e) {
 			fail("Test failed due to exception: " + e.getMessage());
@@ -155,8 +159,8 @@ public class ValidateBasketTest {
 	}
 
 	@Test
-	@DisplayName("Applied coupon product codes are grouped by primary secondary and third")
-	void groupsAppliedCouponProductCodesByPurchaseBucket() {
+	@DisplayName("Applied coupon product codes are returned as one combined gtins list")
+	void returnsAppliedCouponProductCodesAsCombinedGtins() {
 		BasketItem primary = new BasketItem();
 		primary.productCode = "037000930396";
 
@@ -171,8 +175,8 @@ public class ValidateBasketTest {
 		Map<String, List<String>> productCodes = BasketHelper.getProductCodes(
 				List.of(primary, secondary, third));
 
-		assertEquals(List.of("037000930396"), productCodes.get("primary"));
-		assertEquals(List.of("7106919588011"), productCodes.get("secondary"));
-		assertEquals(List.of("037000925033"), productCodes.get("third"));
+		assertEquals(
+				List.of("037000930396", "7106919588011", "037000925033"),
+				productCodes.get("gtins"));
 	}
 }

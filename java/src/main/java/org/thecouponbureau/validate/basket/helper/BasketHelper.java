@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -95,33 +96,20 @@ public class BasketHelper {
 	}
 
 	// =====================================================
-	// Group product codes by purchase bucket
+	// Return one combined GTIN list for all consumed items
 	// =====================================================
 	public static Map<String, List<String>> getProductCodes(
 			List<BasketItem> basketItems) {
 
 		Map<String, List<String>> productCodes = new LinkedHashMap<>();
+		LinkedHashSet<String> gtins = new LinkedHashSet<>();
 
 		for (BasketItem item : basketItems) {
-			String bucket = toProductCodeBucket(item.purchaseGroup);
-			List<String> codes =
-					productCodes.computeIfAbsent(bucket, ignored -> new ArrayList<>());
-			codes.add(item.productCode);
+			gtins.add(item.productCode);
 		}
 
+		productCodes.put("gtins", new ArrayList<>(gtins));
 		return productCodes;
-	}
-
-	private static String toProductCodeBucket(String purchaseGroup) {
-		if ("second_purchase".equals(purchaseGroup)) {
-			return "secondary";
-		}
-
-		if ("third_purchase".equals(purchaseGroup)) {
-			return "third";
-		}
-
-		return "primary";
 	}
 
 	// =====================================================
