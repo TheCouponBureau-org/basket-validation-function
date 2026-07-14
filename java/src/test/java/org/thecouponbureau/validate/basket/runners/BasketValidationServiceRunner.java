@@ -31,6 +31,7 @@ import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService;
 
@@ -244,13 +245,13 @@ public class BasketValidationServiceRunner {
 				expectedJson = row.getCell(7).getStringCellValue().trim();
 			}
 
-			BasketValidationInput input =
-					mapper.readValue(inputJson, BasketValidationInput.class);
+			LocalBasketValidationInput input =
+					mapper.readValue(inputJson, LocalBasketValidationInput.class);
 
-			setTcbConfiguration(input);
+			//setTcbConfiguration(input);
 
 			ValidationResult actualResult =
-					BasketValidator.validateBasketHelper(input);
+					BasketValidator.localBasketValidation(input);
 
 			String actualJson =
 					mapper.writerWithDefaultPrettyPrinter()
@@ -330,7 +331,7 @@ public class BasketValidationServiceRunner {
 		Workbook workbook =
 				new XSSFWorkbook(new FileInputStream(excelPath));
 
-		Sheet sheet = workbook.getSheet("Approch_2");
+		Sheet sheet = workbook.getSheet("Approch_3");
 
 		int processed = 0;
 		int passed = 0;
