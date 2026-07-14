@@ -202,15 +202,9 @@ for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
 
 ## 7. Perform local-only coupon rejection first
 
-Before doing the TCB-backed validation pass, run a local-only pass one coupon at a time.
+Before doing the TCB-backed validation pass, run a local-only pass one coupon at a time using `localBasketValidation(...)`.
 
-Important:
-
-- do **not** set `tcbBaseUrl`
-- do **not** set `tcbAccessKey`
-- do **not** set `tcbAccessToken`
-
-This makes `validateBasketHelper(...)` run locally using only:
+This local method uses only:
 
 - basket
 - `gs1`
@@ -234,11 +228,11 @@ Request:
 List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
 
 for (InputCoupon coupon : coupons) {
-    BasketValidationInput localInput = new BasketValidationInput();
+    LocalBasketValidationInput localInput = new LocalBasketValidationInput();
     localInput.basket = basket;
     localInput.coupons = List.of(coupon);
 
-    ValidationResult localResult = BasketValidator.validateBasketHelper(localInput);
+    ValidationResult localResult = BasketValidator.localBasketValidation(localInput);
 
     if (localResult.error != null) {
         continue;
@@ -270,10 +264,7 @@ Response:
 
 ## 8. Build the final validation input
 
-In the second pass, `coupons` can be sent in either of these supported shapes:
-
-- array of GS1 strings
-- array of coupon objects with `gs1`
+In the second pass, send only serialized GS1 strings in `coupons`.
 
 Do not send `purchase_requirement` in this step.
 
@@ -286,11 +277,9 @@ Reason:
 Request:
 
 ```java
-List<InputCoupon> couponsForFinalValidation = new ArrayList<>();
+List<String> couponsForFinalValidation = new ArrayList<>();
 for (InputCoupon localCoupon : locallyEligibleCoupons) {
-    InputCoupon coupon = new InputCoupon();
-    coupon.gs1 = localCoupon.gs1;
-    couponsForFinalValidation.add(coupon);
+    couponsForFinalValidation.add(localCoupon.gs1);
 }
 
 BasketValidationInput input = new BasketValidationInput();

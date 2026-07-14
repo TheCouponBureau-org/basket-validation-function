@@ -19,6 +19,7 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketV
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationOutput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.Coupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.MeetsRequirementsResult;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ReduceBasketResult;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.UnitsToPurchaseHolder;
@@ -45,12 +46,12 @@ public class BasketValidator {
     public static final Status POSITIVE_STATUS = new Status(true);
 
     /**
-     * Validates a basket against the provided coupons.
+     * Validates a basket against GS1 coupon codes by first resolving them
+     * through TCB and then running local basket validation on the resolved
+     * purchase requirements.
      *
-     * <p>If TCB credentials are present, coupons that still need server-side
-     * resolution are first sent through the TCB pre-process redeem flow so the
-     * SDK can validate coupon state and hydrate purchase requirements before the
-     * final basket pass.
+     * <p>This entry point requires TCB credentials and expects {@code coupons}
+     * to be an array of GS1 strings only.
      */
     public static ValidationResult validateBasketHelper(
             BasketValidationInput basketValidationInput) {
@@ -67,13 +68,14 @@ public class BasketValidator {
                     null);
         }
 
-        BasketValidationOutput basketValidationOutput = createEmptyOutput();
-
         boolean enableLogging = Boolean.TRUE.equals(basketValidationInput.enableLogging);
 
         logValidationInput(basketValidationInput, enableLogging);
 
-        ValidationError inputError = validateCouponInputs(basketValidationInput.coupons);
+        ValidationError inputError =
+                validateTcbBackedCouponInputs(
+                        basketValidationInput.coupons,
+                        basketValidationInput);
         if (inputError != null) {
             return buildErrorResult(
                     defaultOutput,
@@ -82,12 +84,78 @@ public class BasketValidator {
                     inputError.details);
         }
 
-        List<BasketItem> newBasket = BasketHelper.mergeBasketItems(
-                basketValidationInput.basket);
-        List<Coupon> couponsToProcess = prepareCouponsForValidation(
-                basketValidationInput,
-                newBasket,
-                enableLogging);
+        List<Coupon> resolvedCoupons = TcbCouponResolutionService.resolveCoupons(
+                basketValidationInput.tcbBaseUrl,
+                basketValidationInput.tcbAccessKey,
+                basketValidationInput.tcbAccessToken,
+                toInternalCouponCodes(basketValidationInput.coupons),
+                enableLogging
+        );
+
+        LocalBasketValidationInput localInput = new LocalBasketValidationInput();
+        localInput.basket = basketValidationInput.basket;
+        localInput.coupons = toInputCoupons(resolvedCoupons);
+        localInput.enableLogging = basketValidationInput.enableLogging;
+
+        return localBasketValidation(localInput);
+    }
+
+    /**
+     * Validates a basket locally using coupons that already include purchase
+     * requirements. This method never calls TCB.
+     */
+    public static ValidationResult localBasketValidation(
+            LocalBasketValidationInput basketValidationInput) {
+        BasketValidationOutput defaultOutput = createEmptyOutput();
+
+        if (basketValidationInput == null
+                || basketValidationInput.basket == null
+                || basketValidationInput.coupons == null) {
+
+            return buildErrorResult(
+                    defaultOutput,
+                    "INVALID_INPUT",
+                    "basket and coupons are required.",
+                    null);
+        }
+
+        boolean enableLogging = Boolean.TRUE.equals(basketValidationInput.enableLogging);
+        logValidationInput(basketValidationInput, enableLogging);
+
+        ValidationError inputError = validateLocalCouponInputs(basketValidationInput.coupons);
+        if (inputError != null) {
+            return buildErrorResult(
+                    defaultOutput,
+                    inputError.code,
+                    inputError.message,
+                    inputError.details);
+        }
+
+        return validateResolvedCoupons(
+                BasketHelper.mergeBasketItems(basketValidationInput.basket),
+                toInternalCoupons(basketValidationInput.coupons));
+    }
+
+    /**
+     * Backward-compatible alias for callers using the earlier misspelled name.
+     */
+    public static ValidationResult localBasketBalication(
+            LocalBasketValidationInput basketValidationInput) {
+        return localBasketValidation(basketValidationInput);
+    }
+
+    private static BasketValidationOutput createEmptyOutput() {
+        BasketValidationOutput output = new BasketValidationOutput();
+        output.discountInCents = 0;
+        output.appliedCoupons = new ArrayList<>();
+        return output;
+    }
+
+    private static ValidationResult validateResolvedCoupons(
+            List<BasketItem> normalizedBasket,
+            List<Coupon> couponsToProcess) {
+        BasketValidationOutput basketValidationOutput = createEmptyOutput();
+        List<BasketItem> newBasket = normalizedBasket;
 
         for (Coupon coupon : couponsToProcess) {
             CouponApplicationResult couponApplicationResult =
@@ -107,36 +175,6 @@ public class BasketValidator {
         ValidationResult result = new ValidationResult();
         result.basketValidationOutput = basketValidationOutput;
         return result;
-    }
-
-    private static BasketValidationOutput createEmptyOutput() {
-        BasketValidationOutput output = new BasketValidationOutput();
-        output.discountInCents = 0;
-        output.appliedCoupons = new ArrayList<>();
-        return output;
-    }
-
-    private static List<Coupon> prepareCouponsForValidation(
-            BasketValidationInput input,
-            List<BasketItem> normalizedInputBasket,
-            boolean enableLogging) {
-
-        List<Coupon> couponsToProcess = toInternalCoupons(input.coupons);
-        couponsToProcess = filterApplicableInputCoupons(
-                normalizedInputBasket,
-                couponsToProcess);
-
-        if (!hasCouponsToResolve(couponsToProcess) || !hasTcbCredentials(input)) {
-            return couponsToProcess;
-        }
-
-        return TcbCouponResolutionService.resolveCoupons(
-                input.tcbBaseUrl,
-                input.tcbAccessKey,
-                input.tcbAccessToken,
-                couponsToProcess,
-                enableLogging
-        );
     }
 
     private static CouponApplicationResult applyCoupon(
@@ -213,20 +251,6 @@ public class BasketValidator {
         return basketTotalInCents;
     }
 
-    private static boolean hasCouponsToResolve(List<Coupon> coupons) {
-        if (coupons == null || coupons.isEmpty()) {
-            return false;
-        }
-
-        for (Coupon coupon : coupons) {
-            if (coupon != null && coupon.gs1 != null) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static boolean hasTcbCredentials(BasketValidationInput input) {
         return input != null
                 && !isBlank(input.tcbBaseUrl)
@@ -235,7 +259,7 @@ public class BasketValidator {
     }
 
     private static void logValidationInput(
-            BasketValidationInput basketValidationInput,
+            Object basketValidationInput,
             boolean enableLogging) {
 
         if (!enableLogging || basketValidationInput == null) {
@@ -243,16 +267,23 @@ public class BasketValidator {
         }
 
         try {
-            BasketValidationInput logInput = new BasketValidationInput();
-            logInput.basket = basketValidationInput.basket;
-            logInput.coupons = basketValidationInput.coupons;
-            logInput.tcbBaseUrl = basketValidationInput.tcbBaseUrl;
-            logInput.tcbAccessKey = redactValue(basketValidationInput.tcbAccessKey);
-            logInput.tcbAccessToken = redactValue(basketValidationInput.tcbAccessToken);
-            logInput.enableLogging = basketValidationInput.enableLogging;
+            Object logInput = basketValidationInput;
+
+            if (basketValidationInput instanceof BasketValidationInput) {
+                BasketValidationInput input = (BasketValidationInput) basketValidationInput;
+                BasketValidationInput redactedInput = new BasketValidationInput();
+                redactedInput.basket = input.basket;
+                redactedInput.coupons = input.coupons;
+                redactedInput.tcbBaseUrl = input.tcbBaseUrl;
+                redactedInput.tcbAccessKey = redactValue(input.tcbAccessKey);
+                redactedInput.tcbAccessToken = redactValue(input.tcbAccessToken);
+                redactedInput.enableLogging = input.enableLogging;
+                logInput = redactedInput;
+            }
 
             System.out.println("[BasketValidator] Validation input:");
-            System.out.println(LOG_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logInput));
+            System.out.println(
+                    LOG_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(logInput));
         } catch (Exception exception) {
             System.err.println("[BasketValidator] Unable to log validation input: "
                     + exception.getMessage());
@@ -290,7 +321,44 @@ public class BasketValidator {
         return coupons;
     }
 
-    private static ValidationError validateCouponInputs(List<InputCoupon> inputCoupons) {
+    private static List<Coupon> toInternalCouponCodes(List<String> couponCodes) {
+        List<Coupon> coupons = new ArrayList<>();
+
+        if (couponCodes == null) {
+            return coupons;
+        }
+
+        for (String couponCode : couponCodes) {
+            Coupon coupon = new Coupon();
+            coupon.gs1 = couponCode;
+            coupons.add(coupon);
+        }
+
+        return coupons;
+    }
+
+    private static List<InputCoupon> toInputCoupons(List<Coupon> coupons) {
+        List<InputCoupon> inputCoupons = new ArrayList<>();
+
+        if (coupons == null) {
+            return inputCoupons;
+        }
+
+        for (Coupon coupon : coupons) {
+            if (coupon == null) {
+                continue;
+            }
+
+            InputCoupon inputCoupon = new InputCoupon();
+            inputCoupon.gs1 = coupon.gs1;
+            inputCoupon.purchaseRequirement = coupon.purchaseRequirement;
+            inputCoupons.add(inputCoupon);
+        }
+
+        return inputCoupons;
+    }
+
+    private static ValidationError validateLocalCouponInputs(List<InputCoupon> inputCoupons) {
         if (inputCoupons == null) {
             return buildValidationError(
                     "INVALID_INPUT",
@@ -315,14 +383,19 @@ public class BasketValidator {
                         buildCouponIndexDetails(index));
             }
 
-            // Only gs1 and purchaseRequirement are part of the public coupon
-            // input contract. Everything else is rejected before processing.
+            if (inputCoupon.purchaseRequirement == null) {
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon purchase_requirement is required for localBasketValidation.",
+                        buildCouponIndexDetails(index));
+            }
+
             if (inputCoupon.additionalFields != null && !inputCoupon.additionalFields.isEmpty()) {
                 Map<String, Object> details = buildCouponIndexDetails(index);
                 details.put("invalid_fields", new ArrayList<>(inputCoupon.additionalFields.keySet()));
                 return buildValidationError(
                         "INVALID_COUPON_INPUT",
-                        "coupon input only supports gs1 and optional purchase_requirement.",
+                        "coupon input only supports gs1 and purchase_requirement.",
                         details);
             }
         }
@@ -330,73 +403,33 @@ public class BasketValidator {
         return null;
     }
 
-    private static List<Coupon> filterApplicableInputCoupons(
-            List<BasketItem> basket,
-            List<Coupon> coupons) {
-
-        List<Coupon> filteredCoupons = new ArrayList<>();
-
-        if (coupons == null) {
-            return filteredCoupons;
+    private static ValidationError validateTcbBackedCouponInputs(
+            List<String> couponCodes,
+            BasketValidationInput input) {
+        if (couponCodes == null) {
+            return buildValidationError(
+                    "INVALID_INPUT",
+                    "coupons are required.",
+                    null);
         }
 
-        for (Coupon coupon : coupons) {
-            if (coupon == null) {
-                continue;
-            }
-
-            if (coupon.purchaseRequirement == null) {
-                filteredCoupons.add(coupon);
-                continue;
-            }
-
-            // Keep only coupons that can currently apply to the basket.
-            // Non-applicable input coupons are intentionally removed here so
-            // they do not participate in the later TCB resolution step.
-            if (canCouponApplyToBasket(basket, coupon)) {
-                filteredCoupons.add(coupon);
+        for (int index = 0; index < couponCodes.size(); index++) {
+            if (isBlank(couponCodes.get(index))) {
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon gs1 is required.",
+                        buildCouponIndexDetails(index));
             }
         }
 
-        return filteredCoupons;
-    }
-
-    private static boolean canCouponApplyToBasket(
-            List<BasketItem> basket,
-            Coupon coupon) {
-
-        if (basket == null || coupon == null || coupon.purchaseRequirement == null) {
-            return false;
+        if (!hasTcbCredentials(input)) {
+            return buildValidationError(
+                    "INVALID_INPUT",
+                    "tcb_base_url, tcb_access_key, and tcb_access_token are required.",
+                    null);
         }
 
-        // This mirrors the early validation rules without consuming basket
-        // state. It is only used as a prefilter for coupons that already came
-        // with purchaseRequirement in the input payload.
-        long basketTotalPrice = 0L;
-        for (BasketItem item : basket) {
-            basketTotalPrice += BasketHelper.toCents(item.price) * item.quantity;
-        }
-
-        MeetsRequirementsResult meetsResult =
-                RequirementService.meetsRequirements(basket, coupon);
-
-        if (meetsResult == null || !meetsResult.status) {
-            return false;
-        }
-
-        boolean hasOnlyPrimaryPurchase =
-                meetsResult.unitsToPurchase2 == null
-                        && meetsResult.unitsToPurchase3 == null;
-
-        long discountInCents =
-                DiscountService.getDiscountInCents(
-                        coupon,
-                        meetsResult.basketItems,
-                        hasOnlyPrimaryPurchase,
-                        basketTotalPrice,
-                        new ArrayList<>());
-
-        return discountInCents > 0;
+        return null;
     }
 
     private static Map<String, Object> buildCouponIndexDetails(int index) {

@@ -201,15 +201,11 @@ Basket example:
 | `7106919588011` | 1 | `1.81` |
 | `8952803493171` | 1 | `4.67` |
 
-Call `validateBasketHelper(...)` one coupon at a time in this step.
+Call `localBasketValidation(...)` one coupon at a time in this step.
 
 Important:
 
-- Do **not** set `tcbBaseUrl`
-- Do **not** set `tcbAccessKey`
-- Do **not** set `tcbAccessToken`
-
-That makes `validateBasketHelper(...)` run as a local-only validation pass using only the basket and the locally loaded `purchase_requirement`.
+This method does not take TCB credentials. It only uses the basket and the locally loaded `purchase_requirement`.
 
 Request:
 
@@ -218,18 +214,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.thecouponbureau.validate.basket.core.BasketValidator;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
 
 for (InputCoupon coupon : coupons) {
-    BasketValidationInput localInput = new BasketValidationInput();
+    LocalBasketValidationInput localInput = new LocalBasketValidationInput();
     localInput.basket = basket;
     localInput.coupons = List.of(coupon);
 
-    ValidationResult localResult = BasketValidator.validateBasketHelper(localInput);
+    ValidationResult localResult = BasketValidator.localBasketValidation(localInput);
 
     if (localResult.error != null) {
         continue;
@@ -267,10 +263,7 @@ Coupons kept after local filtering for the second pass:
 
 #### Step 7. Build the validation input
 
-In this second pass, `coupons` can be sent in either of these supported shapes:
-
-- array of GS1 strings
-- array of coupon objects with `gs1`
+In this second pass, send only serialized GS1 strings in `coupons`.
 
 Do not send `purchase_requirement` here.
 
@@ -288,8 +281,6 @@ import java.util.List;
 
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
-
 List<BasketItem> basket = new ArrayList<>();
 
 BasketItem item1 = new BasketItem();
@@ -327,11 +318,9 @@ item5.quantity = 1;
 item5.unit = "item";
 basket.add(item5);
 
-List<InputCoupon> coupons = new ArrayList<>();
+List<String> coupons = new ArrayList<>();
 for (String gs1 : locallyEligibleCoupons.stream().map(coupon -> coupon.gs1).toList()) {
-    InputCoupon coupon = new InputCoupon();
-    coupon.gs1 = gs1;
-    coupons.add(coupon);
+    coupons.add(gs1);
 }
 
 BasketValidationInput input = new BasketValidationInput();

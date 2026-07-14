@@ -9,12 +9,6 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * =====================================================
@@ -45,11 +39,22 @@ public class basketValidationResults {
      */
     public static class BasketValidationInput {
         public List<BasketItem> basket;
-        @JsonDeserialize(contentUsing = InputCouponDeserializer.class)
-        public List<InputCoupon> coupons;
+        public List<String> coupons;
         public String tcbBaseUrl;
         public String tcbAccessKey;
         public String tcbAccessToken;
+        public Boolean enableLogging;
+    }
+
+    /**
+     * Input payload for local-only basket validation.
+     *
+     * <p>Every coupon must include both {@code gs1} and
+     * {@code purchase_requirement}. No TCB configuration is used here.
+     */
+    public static class LocalBasketValidationInput {
+        public List<BasketItem> basket;
+        public List<InputCoupon> coupons;
         public Boolean enableLogging;
     }
 
@@ -126,9 +131,9 @@ public class basketValidationResults {
     /**
      * External coupon input model.
      *
-     * Callers must always provide gs1. purchaseRequirement is optional:
-     * if present, the validator can pre-check the basket and drop clearly
-     * inapplicable coupons before any TCB redeem call is made.
+     * Callers must always provide gs1. purchaseRequirement is required for
+     * local-only validation and is ignored by the TCB-backed validation entry
+     * point because that path refreshes requirements from TCB.
      *
      * base_gs1 is ignored if callers still send it from older integrations.
      * Any other extra coupon fields are captured in additionalFields so the
@@ -145,40 +150,6 @@ public class basketValidationResults {
                 return;
             }
             additionalFields.put(key, value);
-        }
-    }
-
-    /**
-     * Supports both coupon input shapes:
-     * - "811200..."
-     * - { "gs1": "811200...", "purchase_requirement": { ... } }
-     */
-    public static class InputCouponDeserializer extends JsonDeserializer<InputCoupon> {
-        @Override
-        public InputCoupon deserialize(
-                JsonParser parser,
-                DeserializationContext context) throws java.io.IOException {
-
-            JsonToken token = parser.currentToken();
-
-            if (token == JsonToken.VALUE_STRING) {
-                InputCoupon coupon = new InputCoupon();
-                coupon.gs1 = parser.getValueAsString();
-                return coupon;
-            }
-
-            if (token == JsonToken.START_OBJECT) {
-                JsonNode node = parser.getCodec().readTree(parser);
-                return parser.getCodec().treeToValue(node, InputCoupon.class);
-            }
-
-            if (token == JsonToken.VALUE_NULL) {
-                return null;
-            }
-
-            return (InputCoupon) context.reportInputMismatch(
-                    InputCoupon.class,
-                    "coupon entry must be a gs1 string or coupon object");
         }
     }
 

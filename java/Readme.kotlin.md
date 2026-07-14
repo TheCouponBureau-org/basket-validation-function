@@ -196,32 +196,28 @@ Basket example:
 | `7106919588011` | 1 | `1.81` |
 | `8952803493171` | 1 | `4.67` |
 
-Call `validateBasketHelper(...)` one coupon at a time in this step.
+Call `localBasketValidation(...)` one coupon at a time in this step.
 
 Important:
 
-- Do **not** set `tcbBaseUrl`
-- Do **not** set `tcbAccessKey`
-- Do **not** set `tcbAccessToken`
-
-That makes `validateBasketHelper(...)` run as a local-only validation pass using only the basket and the locally loaded `purchase_requirement`.
+This method does not take TCB credentials. It only uses the basket and the locally loaded `purchase_requirement`.
 
 Request:
 
 ```kotlin
 import org.thecouponbureau.validate.basket.core.BasketValidator
-import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput
 
 val locallyEligibleCoupons = mutableListOf<InputCoupon>()
 
 for (coupon in coupons) {
-    val localInput = BasketValidationInput().apply {
+    val localInput = LocalBasketValidationInput().apply {
         this.basket = basket
         this.coupons = mutableListOf(coupon)
     }
 
-    val localResult = BasketValidator.validateBasketHelper(localInput)
+    val localResult = BasketValidator.localBasketValidation(localInput)
 
     if (localResult.error != null) {
         continue
@@ -260,10 +256,7 @@ Coupons kept after local filtering for the second pass:
 
 #### Step 7. Build the validation input
 
-In this second pass, `coupons` can be sent in either of these supported shapes:
-
-- array of GS1 strings
-- array of coupon objects with `gs1`
+In this second pass, send only serialized GS1 strings in `coupons`.
 
 Do not send `purchase_requirement` here.
 
@@ -278,7 +271,6 @@ Request:
 ```kotlin
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
-import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
 
 val basket = mutableListOf(
     BasketItem().apply {
@@ -314,9 +306,7 @@ val basket = mutableListOf(
 )
 
 val coupons = locallyEligibleCoupons.map { localCoupon ->
-    InputCoupon().apply {
-        this.gs1 = localCoupon.gs1
-    }
+    localCoupon.gs1
 }.toMutableList()
 
 val input = BasketValidationInput().apply {

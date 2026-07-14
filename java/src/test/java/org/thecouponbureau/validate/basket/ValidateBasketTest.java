@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.junit.jupiter.api.Test;
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
@@ -20,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ValidateBasketTest {
 
 	@Test
-	@DisplayName("Single Input JSON Validation Test")
-	void validateSingleInputJson() {
+	@DisplayName("Local basket validation works with purchase requirements")
+	void validateLocalBasketInputJson() {
 
 		try {
 			// ✅ Read from JSON file
@@ -31,10 +32,10 @@ public class ValidateBasketTest {
 			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
 			// ✅ FIXED
-			BasketValidationInput input = mapper.readValue(file, BasketValidationInput.class);
+			LocalBasketValidationInput input =
+					mapper.readValue(file, LocalBasketValidationInput.class);
 
-			// ✅ FIXED
-			ValidationResult result = BasketValidator.validateBasketHelper(input);
+			ValidationResult result = BasketValidator.localBasketValidation(input);
 
 			// 🔥 Pretty print output
 			String output = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
@@ -55,68 +56,17 @@ public class ValidateBasketTest {
 	}
 
 	@Test
-	@DisplayName("Coupon input ignores base_gs1 from older payloads")
-	void ignoresBaseGs1InCouponInput() {
+	@DisplayName("Local basket validation ignores base_gs1 from older payloads")
+	void localValidationIgnoresBaseGs1InCouponInput() {
 		try {
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
 			String jsonInput = "{"
 					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
-					+ "\"coupons\":[{\"gs1\":\"8112209988459000320001\",\"base_gs1\":\"811220998845900032\"}]"
-					+ "}";
-
-			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
-			ValidationResult result = BasketValidator.validateBasketHelper(input);
-
-			assertNotNull(result);
-			assertNull(result.error);
-			assertNotNull(result.basketValidationOutput);
-			assertEquals(0, result.basketValidationOutput.discountInCents);
-		} catch (Exception e) {
-			fail("Test failed due to exception: " + e.getMessage());
-		}
-	}
-
-	@Test
-	@DisplayName("Coupon input supports serialized gs1 strings")
-	void supportsCouponInputAsSerializedGs1Strings() {
-		try {
-			ObjectMapper mapper = new ObjectMapper();
-			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-
-			String jsonInput = "{"
-					+ "\"basket\":["
-					+ "{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"},"
-					+ "{\"product_code\":\"037000934677\",\"price\":1.34,\"quantity\":1,\"unit\":\"item\"}"
-					+ "],"
-					+ "\"coupons\":[\"8112009988459000019133924009755364\"]"
-					+ "}";
-
-			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
-
-			assertNotNull(input.coupons);
-			assertEquals(1, input.coupons.size());
-			assertEquals("8112009988459000019133924009755364", input.coupons.get(0).gs1);
-			assertNull(input.coupons.get(0).purchaseRequirement);
-		} catch (Exception e) {
-			fail("Test failed due to exception: " + e.getMessage());
-		}
-	}
-
-	@Test
-	@DisplayName("Coupon input supports mixed string and object shapes")
-	void supportsMixedCouponInputShapes() {
-		try {
-			ObjectMapper mapper = new ObjectMapper();
-			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-
-			String jsonInput = "{"
-					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
-					+ "\"coupons\":["
-					+ "\"8112009988459000019133924009755364\","
-					+ "{"
-					+ "\"gs1\":\"8112009988459000039133772240739897\","
+					+ "\"coupons\":[{"
+					+ "\"gs1\":\"8112209988459000320001\","
+					+ "\"base_gs1\":\"811220998845900032\","
 					+ "\"purchase_requirement\":{"
 					+ "\"primary_purchase_gtins\":[\"037000930396\"],"
 					+ "\"primary_purchase_save_value\":100,"
@@ -124,43 +74,52 @@ public class ValidateBasketTest {
 					+ "\"primary_purchase_req_code\":0,"
 					+ "\"save_value_code\":0"
 					+ "}"
-					+ "}"
-					+ "]"
+					+ "}]"
 					+ "}";
 
-			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
+			LocalBasketValidationInput input =
+					mapper.readValue(jsonInput, LocalBasketValidationInput.class);
+			ValidationResult result = BasketValidator.localBasketValidation(input);
 
-			assertNotNull(input.coupons);
-			assertEquals(2, input.coupons.size());
-			assertEquals("8112009988459000019133924009755364", input.coupons.get(0).gs1);
-			assertNull(input.coupons.get(0).purchaseRequirement);
-			assertEquals("8112009988459000039133772240739897", input.coupons.get(1).gs1);
-			assertNotNull(input.coupons.get(1).purchaseRequirement);
-			assertEquals(1, input.coupons.get(1).purchaseRequirement.primaryPurchaseRequirements);
+			assertNotNull(result);
+			assertNull(result.error);
+			assertNotNull(result.basketValidationOutput);
+			assertEquals(100, result.basketValidationOutput.discountInCents);
 		} catch (Exception e) {
 			fail("Test failed due to exception: " + e.getMessage());
 		}
 	}
 
 	@Test
-	@DisplayName("Coupon input still rejects unsupported extra fields")
-	void rejectsCouponInputWithUnsupportedExtraFields() {
+	@DisplayName("Local basket validation rejects unsupported extra fields")
+	void localValidationRejectsCouponInputWithUnsupportedExtraFields() {
 		try {
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
 			String jsonInput = "{"
 					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
-					+ "\"coupons\":[{\"gs1\":\"8112209988459000320001\",\"product_type\":\"x\"}]"
+					+ "\"coupons\":[{"
+					+ "\"gs1\":\"8112209988459000320001\","
+					+ "\"product_type\":\"x\","
+					+ "\"purchase_requirement\":{"
+					+ "\"primary_purchase_gtins\":[\"037000930396\"],"
+					+ "\"primary_purchase_save_value\":100,"
+					+ "\"primary_purchase_requirements\":1,"
+					+ "\"primary_purchase_req_code\":0,"
+					+ "\"save_value_code\":0"
+					+ "}"
+					+ "}]"
 					+ "}";
 
-			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
-			ValidationResult result = BasketValidator.validateBasketHelper(input);
+			LocalBasketValidationInput input =
+					mapper.readValue(jsonInput, LocalBasketValidationInput.class);
+			ValidationResult result = BasketValidator.localBasketValidation(input);
 
 			assertNotNull(result);
 			assertNotNull(result.error);
 			assertEquals("INVALID_COUPON_INPUT", result.error.code);
-			assertEquals("coupon input only supports gs1 and optional purchase_requirement.", result.error.message);
+			assertEquals("coupon input only supports gs1 and purchase_requirement.", result.error.message);
 			assertNotNull(result.error.details);
 			assertEquals(0, result.error.details.get("coupon_index"));
 			assertNotNull(result.basketValidationOutput);
@@ -171,8 +130,8 @@ public class ValidateBasketTest {
 	}
 
 	@Test
-	@DisplayName("Coupon input allows purchase requirement and filters inapplicable coupons")
-	void allowsPurchaseRequirementAndFiltersInapplicableCoupons() {
+	@DisplayName("Local basket validation applies coupons with purchase requirements")
+	void localValidationAppliesCouponsWithPurchaseRequirements() {
 		try {
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -206,8 +165,9 @@ public class ValidateBasketTest {
 					+ "]"
 					+ "}";
 
-			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
-			ValidationResult result = BasketValidator.validateBasketHelper(input);
+			LocalBasketValidationInput input =
+					mapper.readValue(jsonInput, LocalBasketValidationInput.class);
+			ValidationResult result = BasketValidator.localBasketValidation(input);
 
 			assertNotNull(result);
 			assertNull(result.error);
@@ -217,6 +177,34 @@ public class ValidateBasketTest {
 			assertEquals(
 					"8112009988459000019133924009755364",
 					result.basketValidationOutput.appliedCoupons.get(0).couponCode);
+		} catch (Exception e) {
+			fail("Test failed due to exception: " + e.getMessage());
+		}
+	}
+
+	@Test
+	@DisplayName("TCB-backed validation accepts gs1 string arrays and requires credentials")
+	void validateBasketHelperAcceptsGs1StringsAndRequiresCredentials() {
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+			String jsonInput = "{"
+					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
+					+ "\"coupons\":[\"8112009988459000019133924009755364\"]"
+					+ "}";
+
+			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
+			ValidationResult result = BasketValidator.validateBasketHelper(input);
+
+			assertNotNull(input.coupons);
+			assertEquals(1, input.coupons.size());
+			assertEquals("8112009988459000019133924009755364", input.coupons.get(0));
+			assertNotNull(result.error);
+			assertEquals("INVALID_INPUT", result.error.code);
+			assertEquals(
+					"tcb_base_url, tcb_access_key, and tcb_access_token are required.",
+					result.error.message);
 		} catch (Exception e) {
 			fail("Test failed due to exception: " + e.getMessage());
 		}
