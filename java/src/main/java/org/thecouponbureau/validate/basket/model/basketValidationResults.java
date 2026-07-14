@@ -118,8 +118,9 @@ public class basketValidationResults {
      * if present, the validator can pre-check the basket and drop clearly
      * inapplicable coupons before any TCB redeem call is made.
      *
-     * Any other coupon fields are captured in additionalFields so the validator
-     * can reject them explicitly and return a structured input error.
+     * base_gs1 is ignored if callers still send it from older integrations.
+     * Any other extra coupon fields are captured in additionalFields so the
+     * validator can reject them explicitly and return a structured input error.
      */
     public static class InputCoupon {
         public String gs1;
@@ -128,6 +129,9 @@ public class basketValidationResults {
 
         @JsonAnySetter
         public void setAdditionalField(String key, Object value) {
+            if ("base_gs1".equals(key) || "baseGs1".equals(key)) {
+                return;
+            }
             additionalFields.put(key, value);
         }
     }

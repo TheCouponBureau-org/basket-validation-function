@@ -51,8 +51,8 @@ public class ValidateBasketTest {
 	}
 
 	@Test
-	@DisplayName("Coupon input rejects fields other than gs1")
-	void rejectsCouponInputWithExtraFields() {
+	@DisplayName("Coupon input ignores base_gs1 from older payloads")
+	void ignoresBaseGs1InCouponInput() {
 		try {
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -60,6 +60,30 @@ public class ValidateBasketTest {
 			String jsonInput = "{"
 					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
 					+ "\"coupons\":[{\"gs1\":\"8112209988459000320001\",\"base_gs1\":\"811220998845900032\"}]"
+					+ "}";
+
+			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
+			ValidationResult result = BasketValidator.validateBasketHelper(input);
+
+			assertNotNull(result);
+			assertNull(result.error);
+			assertNotNull(result.basketValidationOutput);
+			assertEquals(0, result.basketValidationOutput.discountInCents);
+		} catch (Exception e) {
+			fail("Test failed due to exception: " + e.getMessage());
+		}
+	}
+
+	@Test
+	@DisplayName("Coupon input still rejects unsupported extra fields")
+	void rejectsCouponInputWithUnsupportedExtraFields() {
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+			String jsonInput = "{"
+					+ "\"basket\":[{\"product_code\":\"037000930396\",\"price\":1.29,\"quantity\":1,\"unit\":\"item\"}],"
+					+ "\"coupons\":[{\"gs1\":\"8112209988459000320001\",\"product_type\":\"x\"}]"
 					+ "}";
 
 			BasketValidationInput input = mapper.readValue(jsonInput, BasketValidationInput.class);
