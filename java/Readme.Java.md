@@ -67,6 +67,11 @@ Response:
 Request:
 
 ```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
+
 List<TcbScannedGs1Service.SerializedGs1Data> resolved =
         TcbScannedGs1Service.parseScannedGs1s(
                 "https://api.try.thecouponbureau.org/",
@@ -78,6 +83,18 @@ List<TcbScannedGs1Service.SerializedGs1Data> resolved =
                         "8112009988459000049133939957096441",
                         "8112009988459000199133935966961409",
                         "8112209988459000"));
+
+ObjectMapper mapper = new ObjectMapper();
+mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+System.out.println("Resolved scanned GS1 response:");
+System.out.println(
+        mapper.writerWithDefaultPrettyPrinter().writeValueAsString(resolved));
+
+for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
+    System.out.println(
+            "serialized_gs1=" + item.gs1 + ", base_gs1=" + item.baseGs1);
+}
 ```
 
 - The first four scanned values already start with `8112`, so `parseScannedGs1s(...)` parses them locally.
@@ -85,6 +102,31 @@ List<TcbScannedGs1Service.SerializedGs1Data> resolved =
 - Assume TCB returns the following additional serialized coupons from that fetch code.
 
 Response:
+
+```json
+[
+  {
+    "gs1": "8112009988459000019133924009755364",
+    "base_gs1": "811200998845900001"
+  },
+  {
+    "gs1": "8112009988459000039133772240739897",
+    "base_gs1": "811200998845900003"
+  },
+  {
+    "gs1": "8112009988459000049133939957096441",
+    "base_gs1": "811200998845900004"
+  },
+  {
+    "gs1": "8112009988459000199133935966961409",
+    "base_gs1": "811200998845900019"
+  },
+  {
+    "gs1": "8112009988459000019133520317194861",
+    "base_gs1": "811200998845900001"
+  }
+]
+```
 
 | Source | Serialized coupon | `base_gs1` |
 | --- | --- | --- |
