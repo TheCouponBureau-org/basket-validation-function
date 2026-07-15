@@ -1,10 +1,8 @@
 package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.thecouponbureau.validate.basket.Services.BasketReducerService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
@@ -48,12 +46,20 @@ public class BasketValidator {
     public static final Status POSITIVE_STATUS = new Status(true);
 
     /**
-     * Validates a basket against GS1 coupon codes by first resolving them
-     * through TCB and then running local basket validation on the resolved
-     * purchase requirements.
+     * Validates a basket after local coupon resolution is complete.
      *
-     * <p>This entry point requires TCB credentials and expects {@code coupons}
-     * to be an array of GS1 strings only.
+     * <p>The input may contain:
+     * <ul>
+     *   <li>GS1 strings only</li>
+     *   <li>coupon objects with {@code gs1}, {@code purchase_requirement}, and
+     *       optional {@code validated=true}</li>
+     * </ul>
+     *
+     * <p>Coupons already marked {@code validated=true} skip the TCB validation
+     * round-trip. Coupons not yet validated are sent through TCB
+     * {@code retailer/redeem} with {@code pre_process=yes} and
+     * {@code no_purchase_requirement=yes}. Coupons not returned in
+     * {@code newly_redeemed} are removed before final local basket validation.
      */
     public static ValidationResult validateBasketHelper(
             BasketValidationInput basketValidationInput) {
@@ -86,41 +92,16 @@ public class BasketValidator {
                     inputError.details);
         }
         
-        //Remove duplicate coupons if not 81122
-        List<String> uniqueCoupons = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-
-        for (String coupon : basketValidationInput.coupons) {
-
-            // Keep all duplicates for coupons starting with 81122
-            if (coupon != null && coupon.startsWith("81122")) {
-                uniqueCoupons.add(coupon);
-                continue;
-            }
-
-            // Remove duplicates for all other coupons
-            if (seen.add(coupon)) {
-                uniqueCoupons.add(coupon);
-            }
-        }
-
-        basketValidationInput.coupons = uniqueCoupons;
-
-       
-
-        List<Coupon> resolvedCoupons = TcbCouponResolutionService.resolveCoupons(
-                basketValidationInput.tcbBaseUrl,
-                basketValidationInput.tcbAccessKey,
-                basketValidationInput.tcbAccessToken,
-                toInternalCouponCodes(basketValidationInput.coupons),
-                enableLogging
-        );
+        List<Coupon> coupons = toInternalCoupons(basketValidationInput.coupons);
+        List<Coupon> finalCoupons = prepareCouponsForFinalValidation(
+                basketValidationInput,
+                coupons,
+                enableLogging);
 
         LocalBasketValidationInput localInput = new LocalBasketValidationInput();
         localInput.basket = basketValidationInput.basket;
-        localInput.coupons = toInputCoupons(resolvedCoupons);
+        localInput.coupons = toInputCoupons(finalCoupons);
         localInput.enableLogging = basketValidationInput.enableLogging;
-
         return localBasketValidation(localInput);
     }
 
@@ -338,23 +319,8 @@ public class BasketValidator {
             if (inputCoupon != null) {
                 coupon.gs1 = inputCoupon.gs1;
                 coupon.purchaseRequirement = inputCoupon.purchaseRequirement;
+                coupon.validated = inputCoupon.validated;
             }
-            coupons.add(coupon);
-        }
-
-        return coupons;
-    }
-
-    private static List<Coupon> toInternalCouponCodes(List<String> couponCodes) {
-        List<Coupon> coupons = new ArrayList<>();
-
-        if (couponCodes == null) {
-            return coupons;
-        }
-
-        for (String couponCode : couponCodes) {
-            Coupon coupon = new Coupon();
-            coupon.gs1 = couponCode;
             coupons.add(coupon);
         }
 
@@ -376,6 +342,7 @@ public class BasketValidator {
             InputCoupon inputCoupon = new InputCoupon();
             inputCoupon.gs1 = coupon.gs1;
             inputCoupon.purchaseRequirement = coupon.purchaseRequirement;
+            inputCoupon.validated = coupon.validated;
             inputCoupons.add(inputCoupon);
         }
 
@@ -428,21 +395,39 @@ public class BasketValidator {
     }
 
     private static ValidationError validateTcbBackedCouponInputs(
-            List<String> couponCodes,
+            List<InputCoupon> inputCoupons,
             BasketValidationInput input) {
-        if (couponCodes == null) {
+        if (inputCoupons == null) {
             return buildValidationError(
                     "INVALID_INPUT",
                     "coupons are required.",
                     null);
         }
 
-        for (int index = 0; index < couponCodes.size(); index++) {
-            if (isBlank(couponCodes.get(index))) {
+        for (int index = 0; index < inputCoupons.size(); index++) {
+            InputCoupon inputCoupon = inputCoupons.get(index);
+
+            if (inputCoupon == null) {
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon entry cannot be null.",
+                        buildCouponIndexDetails(index));
+            }
+
+            if (isBlank(inputCoupon.gs1)) {
                 return buildValidationError(
                         "INVALID_COUPON_INPUT",
                         "coupon gs1 is required.",
                         buildCouponIndexDetails(index));
+            }
+
+            if (inputCoupon.additionalFields != null && !inputCoupon.additionalFields.isEmpty()) {
+                Map<String, Object> details = buildCouponIndexDetails(index);
+                details.put("invalid_fields", new ArrayList<>(inputCoupon.additionalFields.keySet()));
+                return buildValidationError(
+                        "INVALID_COUPON_INPUT",
+                        "coupon input only supports gs1, optional purchase_requirement, and optional validated.",
+                        details);
             }
         }
 
@@ -454,6 +439,54 @@ public class BasketValidator {
         }
 
         return null;
+    }
+
+    private static List<Coupon> prepareCouponsForFinalValidation(
+            BasketValidationInput input,
+            List<Coupon> coupons,
+            boolean enableLogging) {
+        List<Coupon> alreadyValidatedCoupons = new ArrayList<>();
+        List<Coupon> couponsNeedingValidationOnly = new ArrayList<>();
+        List<Coupon> couponsNeedingFullResolution = new ArrayList<>();
+
+        for (Coupon coupon : coupons) {
+            if (coupon == null || isBlank(coupon.gs1)) {
+                continue;
+            }
+
+            if (Boolean.TRUE.equals(coupon.validated)) {
+                alreadyValidatedCoupons.add(coupon);
+                continue;
+            }
+
+            if (coupon.purchaseRequirement != null) {
+                couponsNeedingValidationOnly.add(coupon);
+            } else {
+                couponsNeedingFullResolution.add(coupon);
+            }
+        }
+
+        List<Coupon> validatedCoupons = new ArrayList<>(alreadyValidatedCoupons);
+
+        if (!couponsNeedingValidationOnly.isEmpty()) {
+            validatedCoupons.addAll(TcbCouponResolutionService.validateCoupons(
+                    input.tcbBaseUrl,
+                    input.tcbAccessKey,
+                    input.tcbAccessToken,
+                    couponsNeedingValidationOnly,
+                    enableLogging));
+        }
+
+        if (!couponsNeedingFullResolution.isEmpty()) {
+            validatedCoupons.addAll(TcbCouponResolutionService.resolveCoupons(
+                    input.tcbBaseUrl,
+                    input.tcbAccessKey,
+                    input.tcbAccessToken,
+                    couponsNeedingFullResolution,
+                    enableLogging));
+        }
+
+        return validatedCoupons;
     }
 
     private static Map<String, Object> buildCouponIndexDetails(int index) {

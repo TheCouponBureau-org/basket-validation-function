@@ -32,6 +32,37 @@ public class TcbCouponResolutionService {
             String accessToken,
             List<Coupon> coupons,
             boolean enableLogging) {
+        return processCoupons(
+                baseUrl,
+                accessKey,
+                accessToken,
+                coupons,
+                enableLogging,
+                true);
+    }
+
+    public static List<Coupon> validateCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<Coupon> coupons,
+            boolean enableLogging) {
+        return processCoupons(
+                baseUrl,
+                accessKey,
+                accessToken,
+                coupons,
+                enableLogging,
+                false);
+    }
+
+    private static List<Coupon> processCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<Coupon> coupons,
+            boolean enableLogging,
+            boolean includePurchaseRequirements) {
 
         if (coupons == null || coupons.isEmpty()) {
             return coupons;
@@ -54,7 +85,13 @@ public class TcbCouponResolutionService {
         List<CompletableFuture<BucketResolution>> futures = new ArrayList<>();
 
         for (CouponBucket bucket : buckets) {
-            futures.add(requestRedeemAsync(baseUrl, accessKey, accessToken, bucket, enableLogging));
+            futures.add(requestRedeemAsync(
+                    baseUrl,
+                    accessKey,
+                    accessToken,
+                    bucket,
+                    enableLogging,
+                    includePurchaseRequirements));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -171,10 +208,12 @@ public class TcbCouponResolutionService {
             String accessKey,
             String accessToken,
             CouponBucket bucket,
-            boolean enableLogging) {
+            boolean enableLogging,
+            boolean includePurchaseRequirements) {
 
         try {
             RedeemRequest payload = new RedeemRequest();
+            payload.noPurchaseRequirement = includePurchaseRequirements ? "" : "yes";
 
             if (bucket.singleCouponBucket) {
                 payload.gs1s.add(bucket.couponRefs.get(0).coupon.gs1);
@@ -194,7 +233,11 @@ public class TcbCouponResolutionService {
 
             return CompletableFuture.supplyAsync(() ->
                     TcbApiService.sendWithRetry(request, "retailer/redeem"))
-                    .thenApply(response -> parseResolutionResponse(response, bucket, enableLogging));
+                    .thenApply(response -> parseResolutionResponse(
+                            response,
+                            bucket,
+                            enableLogging,
+                            includePurchaseRequirements));
 
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to serialize TCB redeem request.", exception);
@@ -204,7 +247,8 @@ public class TcbCouponResolutionService {
     private static BucketResolution parseResolutionResponse(
             HttpResponse<String> response,
             CouponBucket bucket,
-            boolean enableLogging) {
+            boolean enableLogging,
+            boolean includePurchaseRequirements) {
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException(
@@ -221,7 +265,9 @@ public class TcbCouponResolutionService {
                 return new BucketResolution(new HashMap<>());
             }
 
-            if (redeemResponse.masterOfferFiles == null || redeemResponse.masterOfferFiles.isEmpty()) {
+            if (includePurchaseRequirements
+                    && (redeemResponse.masterOfferFiles == null
+                    || redeemResponse.masterOfferFiles.isEmpty())) {
                 return new BucketResolution(new HashMap<>());
             }
 
@@ -234,7 +280,9 @@ public class TcbCouponResolutionService {
                 for (int sequence = 0; sequence < redeemResponse.newlyRedeemed.size(); sequence++) {
                     Coupon resolvedCoupon = toResolvedCoupon(
                             redeemResponse.newlyRedeemed.get(sequence),
-                            redeemResponse.masterOfferFiles);
+                            redeemResponse.masterOfferFiles,
+                            ref.coupon,
+                            includePurchaseRequirements);
 
                     if (resolvedCoupon != null) {
                         resolvedCoupons.add(new ResolvedCouponItem(sequence, resolvedCoupon));
@@ -270,7 +318,11 @@ public class TcbCouponResolutionService {
                 }
 
                 Coupon resolvedCoupon =
-                        toResolvedCoupon(redeemedCoupon, redeemResponse.masterOfferFiles);
+                        toResolvedCoupon(
+                                redeemedCoupon,
+                                redeemResponse.masterOfferFiles,
+                                requestedCouponGs1.couponRef.coupon,
+                                includePurchaseRequirements);
 
                 if (resolvedCoupon == null) {
                     continue;
@@ -293,7 +345,9 @@ public class TcbCouponResolutionService {
 
     private static Coupon toResolvedCoupon(
             RedeemedCoupon redeemedCoupon,
-            Map<String, PurchaseRequirement> masterOfferFiles) {
+            Map<String, PurchaseRequirement> masterOfferFiles,
+            Coupon originalCoupon,
+            boolean includePurchaseRequirements) {
 
         if (redeemedCoupon == null
                 || isBlank(redeemedCoupon.gs1)
@@ -301,8 +355,9 @@ public class TcbCouponResolutionService {
             return null;
         }
 
-        PurchaseRequirement purchaseRequirement =
-                resolvePurchaseRequirement(redeemedCoupon, masterOfferFiles);
+        PurchaseRequirement purchaseRequirement = includePurchaseRequirements
+                ? resolvePurchaseRequirement(redeemedCoupon, masterOfferFiles)
+                : originalCoupon == null ? null : originalCoupon.purchaseRequirement;
 
         if (purchaseRequirement == null) {
             return null;
@@ -312,6 +367,7 @@ public class TcbCouponResolutionService {
         resolvedCoupon.gs1 = redeemedCoupon.gs1;
         resolvedCoupon.baseGs1 = redeemedCoupon.masterOfferFile;
         resolvedCoupon.purchaseRequirement = purchaseRequirement;
+        resolvedCoupon.validated = true;
         return resolvedCoupon;
     }
 

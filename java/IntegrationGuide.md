@@ -305,22 +305,30 @@ Response:
 
 ## 8. Build the final validation input
 
-In the second pass, send only serialized GS1 strings in `coupons`.
+In the second pass, send coupon objects in `coupons` with:
 
-Do not send `purchase_requirement` in this step.
+- `gs1`
+- `purchase_requirement`
+- optional `validated = true`
 
-Reason:
+Optimization:
 
-- `validateBasketHelper(...)` will call TCB `retailer/redeem` with `pre_process = "yes"`
-- TCB validates whether each coupon is currently usable
-- the SDK uses the updated `purchase_requirement` returned by TCB for final basket validation
+- coupons with `validated = true` skip the TCB validation call
+- coupons without `validated = true` are sent to TCB `retailer/redeem`
+- that TCB request uses `pre_process = "yes"` and `no_purchase_requirement = "yes"`
+- coupons not returned in `newly_redeemed` are removed
+- the final discount is then computed locally using the remaining coupon objects and their local `purchase_requirement`
 
 Request:
 
 ```java
-List<String> couponsForFinalValidation = new ArrayList<>();
+List<InputCoupon> couponsForFinalValidation = new ArrayList<>();
 for (InputCoupon localCoupon : locallyEligibleCoupons) {
-    couponsForFinalValidation.add(localCoupon.gs1);
+    InputCoupon coupon = new InputCoupon();
+    coupon.gs1 = localCoupon.gs1;
+    coupon.purchaseRequirement = localCoupon.purchaseRequirement;
+    coupon.validated = localCoupon.validated;
+    couponsForFinalValidation.add(coupon);
 }
 
 BasketValidationInput input = new BasketValidationInput();
@@ -340,9 +348,19 @@ Input payload shape:
     { "product_code": "037000808893", "price": 5.64, "quantity": 1, "unit": "item" }
   ],
   "coupons": [
-    "8112009988459000019133924009755364",
-    "8112009988459000039133772240739897",
-    "8112009988459000049133939957096441"
+    {
+      "gs1": "8112009988459000019133924009755364",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900001" },
+      "validated": true
+    },
+    {
+      "gs1": "8112009988459000039133772240739897",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900003" }
+    },
+    {
+      "gs1": "8112009988459000049133939957096441",
+      "purchase_requirement": { "...": "loaded from local DB using 811200998845900004" }
+    }
   ]
 }
 ```
@@ -361,11 +379,11 @@ ValidationResult result = BasketValidator.validateBasketHelper(input);
 
 What happens inside this call:
 
-1. TCB `retailer/redeem` is called with `pre_process = "yes"`
-2. TCB validates whether each coupon is currently usable
-3. Coupons not returned in `newly_redeemed` are removed
-4. The SDK uses the updated `purchase_requirement` returned by TCB
-5. Final basket validation runs on the TCB-confirmed coupon set
+1. Coupons with `validated = true` are kept as already validated
+2. Coupons without `validated = true` are sent to TCB `retailer/redeem`
+3. That TCB request uses `pre_process = "yes"` and `no_purchase_requirement = "yes"`
+4. Coupons not returned in `newly_redeemed` are removed
+5. Final basket validation runs locally using the surviving coupons and their local `purchase_requirement`
 
 Response:
 

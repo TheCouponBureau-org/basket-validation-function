@@ -9,6 +9,12 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * =====================================================
@@ -39,7 +45,8 @@ public class basketValidationResults {
      */
     public static class BasketValidationInput {
         public List<BasketItem> basket;
-        public List<String> coupons;
+        @JsonDeserialize(contentUsing = InputCouponDeserializer.class)
+        public List<InputCoupon> coupons;
         public String tcbBaseUrl;
         public String tcbAccessKey;
         public String tcbAccessToken;
@@ -142,6 +149,7 @@ public class basketValidationResults {
     public static class InputCoupon {
         public String gs1;
         public PurchaseRequirement purchaseRequirement;
+        public Boolean validated;
         public Map<String, Object> additionalFields = new HashMap<>();
 
         @JsonAnySetter
@@ -150,6 +158,40 @@ public class basketValidationResults {
                 return;
             }
             additionalFields.put(key, value);
+        }
+    }
+
+    /**
+     * Supports both validateBasketHelper coupon shapes:
+     * - "811200..."
+     * - { "gs1": "811200...", "purchase_requirement": { ... }, "validated": true }
+     */
+    public static class InputCouponDeserializer extends JsonDeserializer<InputCoupon> {
+        @Override
+        public InputCoupon deserialize(
+                JsonParser parser,
+                DeserializationContext context) throws java.io.IOException {
+
+            JsonToken token = parser.currentToken();
+
+            if (token == JsonToken.VALUE_STRING) {
+                InputCoupon coupon = new InputCoupon();
+                coupon.gs1 = parser.getValueAsString();
+                return coupon;
+            }
+
+            if (token == JsonToken.START_OBJECT) {
+                JsonNode node = parser.getCodec().readTree(parser);
+                return parser.getCodec().treeToValue(node, InputCoupon.class);
+            }
+
+            if (token == JsonToken.VALUE_NULL) {
+                return null;
+            }
+
+            return (InputCoupon) context.reportInputMismatch(
+                    InputCoupon.class,
+                    "coupon entry must be a gs1 string or coupon object");
         }
     }
 
@@ -164,6 +206,7 @@ public class basketValidationResults {
         public String gs1;                      // Coupon identifier
         public String baseGs1;                  // Base reference
         public PurchaseRequirement purchaseRequirement; // Rules
+        public Boolean validated;
     }
 
     /**
