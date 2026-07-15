@@ -539,3 +539,184 @@ Response:
   "8112009988459000049133939957096441": "{\"status\":\"success\",\"message\":\"Coupon rollback successful\"}"
 }
 ```
+
+## Complete Kotlin Example
+
+The following example hardcodes basket data and coupon purchase requirements directly in code and shows the full SDK flow without using any fetch code.
+
+```kotlin
+01 package demo
+02 
+03 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
+04 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
+05 import org.thecouponbureau.validate.basket.Services.TcbTokenService
+06 import org.thecouponbureau.validate.basket.core.BasketValidator
+07 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon
+08 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
+09 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
+10 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
+11 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput
+12 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+13 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult
+14 
+15 object EndToEndBasketValidationExample {
+16 
+17     @JvmStatic
+18     fun main(args: Array<String>) {
+19         val tcbBaseUrl = "https://api.try.thecouponbureau.org"
+20         val tcbAccessKey = "YOUR_ACCESS_KEY"
+21         val tcbSecretKey = "YOUR_SECRET_KEY"
+22 
+23         val accessToken = TcbTokenService.fetchAccessToken(
+24             tcbBaseUrl,
+25             tcbAccessKey,
+26             tcbSecretKey
+27         )
+28 
+29         val basket = buildBasket()
+30         val couponsFromLocalDb = buildCouponsFromLocalDb()
+31 
+32         val locallyEligibleCoupons = mutableListOf<InputCoupon>()
+33 
+34         for (coupon in couponsFromLocalDb) {
+35             val localInput = LocalBasketValidationInput().apply {
+36                 this.basket = basket
+37                 this.coupons = mutableListOf(coupon)
+38             }
+39 
+40             val localResult = BasketValidator.localBasketValidation(localInput)
+41 
+42             if (localResult.error != null) {
+43                 continue
+44             }
+45 
+46             if (localResult.basketValidationOutput != null
+47                 && localResult.basketValidationOutput.discountInCents > 0
+48             ) {
+49                 locallyEligibleCoupons.add(coupon)
+50             }
+51         }
+52 
+53         val validateInput = BasketValidationInput().apply {
+54             this.basket = basket
+55             this.coupons = locallyEligibleCoupons
+56             this.tcbBaseUrl = tcbBaseUrl
+57             this.tcbAccessKey = tcbAccessKey
+58             this.tcbAccessToken = accessToken
+59             this.enableLogging = true
+60         }
+61 
+62         val finalResult = BasketValidator.validateBasketHelper(validateInput)
+63 
+64         println("discount_in_cents = ${finalResult.basketValidationOutput.discountInCents}")
+65 
+66         for (appliedCoupon: AppliedCoupon in finalResult.basketValidationOutput.appliedCoupons) {
+67             println("coupon_code = ${appliedCoupon.couponCode}")
+68             println("face_value_in_cents = ${appliedCoupon.faceValueInCents}")
+69             println("gtins = ${appliedCoupon.productCodes["gtins"]}")
+70         }
+71 
+72         val appliedCouponGs1s = finalResult.basketValidationOutput.appliedCoupons
+73             .map { appliedCoupon -> appliedCoupon.couponCode }
+74 
+75         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
+76         // Only after transaction success should retailer redeem the applied coupons in TCB.
+77 
+78         val redeemResponse = TcbCouponRedeemService.redeemCoupons(
+79             tcbBaseUrl,
+80             tcbAccessKey,
+81             accessToken,
+82             appliedCouponGs1s
+83         )
+84 
+85         println("redeemResponse = $redeemResponse")
+86 
+87         // If transaction is voided later, roll back those redeemed coupons.
+88         val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+89             tcbBaseUrl,
+90             tcbAccessKey,
+91             accessToken,
+92             appliedCouponGs1s
+93         )
+94 
+95         println("rollbackResponses = $rollbackResponses")
+96     }
+97 
+98     private fun buildBasket(): MutableList<BasketItem> {
+99         return mutableListOf(
+100             basketItem("037000930396", 1.29, 1),
+101             basketItem("037000934677", 1.34, 1),
+102             basketItem("030772076835", 3.07, 2),
+103             basketItem("037000534358", 6.62, 1),
+104             basketItem("037000808893", 5.64, 1)
+105         )
+106     }
+107 
+108     private fun buildCouponsFromLocalDb(): MutableList<InputCoupon> {
+109         val couponOne = InputCoupon().apply {
+110             gs1 = "8112009988459000019133924009755364"
+111             purchaseRequirement = purchaseRequirement(
+112                 primaryPurchaseGtins = listOf("037000930396", "037000934677", "012345678912"),
+113                 primaryPurchaseEans = listOf("7106919588011", "8952803493171", "5012345678900"),
+114                 primaryPurchaseSaveValue = 100L,
+115                 primaryPurchaseRequirements = 2L,
+116                 primaryPurchaseReqCode = 0,
+117                 saveValueCode = 0
+118             )
+119         }
+120 
+121         val couponTwo = InputCoupon().apply {
+122             gs1 = "8112009988459000039133772240739897"
+123             purchaseRequirement = purchaseRequirement(
+124                 primaryPurchaseGtins = listOf("037000761648", "037000925323"),
+125                 primaryPurchaseEans = listOf("030772076835", "030772076880"),
+126                 primaryPurchaseSaveValue = 100L,
+127                 primaryPurchaseRequirements = 2L,
+128                 primaryPurchaseReqCode = 0,
+129                 saveValueCode = 0
+130             )
+131         }
+132 
+133         val couponThree = InputCoupon().apply {
+134             gs1 = "8112009988459000049133939957096441"
+135             purchaseRequirement = purchaseRequirement(
+136                 primaryPurchaseGtins = listOf("037000523550", "037000758365"),
+137                 primaryPurchaseEans = listOf("030772118054", "030772118092"),
+138                 primaryPurchaseSaveValue = 100L,
+139                 primaryPurchaseRequirements = 2L,
+140                 primaryPurchaseReqCode = 0,
+141                 saveValueCode = 0
+142             )
+143         }
+144 
+145         return mutableListOf(couponOne, couponTwo, couponThree)
+146     }
+147 
+148     private fun purchaseRequirement(
+149         primaryPurchaseGtins: List<String>,
+150         primaryPurchaseEans: List<String>,
+151         primaryPurchaseSaveValue: Long,
+152         primaryPurchaseRequirements: Long,
+153         primaryPurchaseReqCode: Int,
+154         saveValueCode: Int
+155     ): PurchaseRequirement {
+156         return PurchaseRequirement().apply {
+157             this.primaryPurchaseGtins = primaryPurchaseGtins
+158             this.primaryPurchaseEans = primaryPurchaseEans
+159             this.primaryPurchaseSaveValue = primaryPurchaseSaveValue
+160             this.primaryPurchaseRequirements = primaryPurchaseRequirements
+161             this.primaryPurchaseReqCode = primaryPurchaseReqCode
+162             this.saveValueCode = saveValueCode
+163         }
+164     }
+165 
+166     private fun basketItem(productCode: String, price: Double, quantity: Int): BasketItem {
+167         return BasketItem().apply {
+168             this.productCode = productCode
+169             this.price = price
+170             this.quantity = quantity
+171             this.unit = "item"
+172         }
+173     }
+174 }
+```
