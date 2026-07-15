@@ -37,6 +37,12 @@ Clean and build the project:
 mvn clean package
 ```
 
+Clean and build the project with test skip:
+
+```bash
+mvn clean package -DskipTests
+```
+
 This generates:
 
 ```
