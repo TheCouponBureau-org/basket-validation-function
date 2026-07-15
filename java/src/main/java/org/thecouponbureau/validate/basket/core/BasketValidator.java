@@ -1,6 +1,7 @@
 package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -83,6 +84,11 @@ public class BasketValidator {
                     inputError.message,
                     inputError.details);
         }
+        
+        basketValidationInput.coupons = new ArrayList<>(
+                new LinkedHashSet<>(basketValidationInput.coupons)
+
+        );
 
         List<Coupon> resolvedCoupons = TcbCouponResolutionService.resolveCoupons(
                 basketValidationInput.tcbBaseUrl,
