@@ -185,7 +185,7 @@ public class BasketValidationService {
 		}
 	}
 
-	public void validateApproach1(String excelFile) throws Exception {
+	public void localBasketValidation(String excelFile, String sheetName) throws Exception {
 
 		logger.info("====================================");
 		logger.info("Executing Approach_1");
@@ -201,7 +201,7 @@ public class BasketValidationService {
 		Workbook workbook =
 				new XSSFWorkbook(new FileInputStream(excelPath));
 
-		Sheet sheet = workbook.getSheet("Approch_1");
+		Sheet sheet = workbook.getSheet(sheetName);
 
 		int processed = 0;
 		int passed = 0;
@@ -308,7 +308,7 @@ public class BasketValidationService {
 		logger.info(failedRows);
 	}
 
-	public void validateApproach2(String excelFile) throws Exception {
+	public void validateBasket(String excelFile, String sheetName) throws Exception {
 
 		logger.info("====================================");
 		logger.info("Executing Approach_2");
@@ -324,7 +324,7 @@ public class BasketValidationService {
 		Workbook workbook =
 				new XSSFWorkbook(new FileInputStream(excelPath));
 
-		Sheet sheet = workbook.getSheet("Approch_3");
+		Sheet sheet = workbook.getSheet(sheetName);
 
 		int processed = 0;
 		int passed = 0;

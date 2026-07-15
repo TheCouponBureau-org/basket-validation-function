@@ -19,34 +19,25 @@ public class BasketValidationServiceTest {
 	
 	@Test
 	@Tag("approach1")
-	public void validateApproach1() throws Exception {
+	public void localBasketValidation() throws Exception {
 
 	    BasketValidationService runner =
 	            new BasketValidationService();
 
-	    runner.validateApproach1(
-	            "POS_Basket_Validation_UseCases.xlsx");
+	    runner.localBasketValidation(
+	            "POS_Basket_Validation_UseCases.xlsx", "localBasketValidation");
 
 	}
 	
     @Test
     @Tag("approach2")
-    public void validateApproach2() throws Exception {
+    public void validateBasket() throws Exception {
 
         BasketValidationService runner =
                 new BasketValidationService();
 
-        runner.validateApproach2(
-                "POS_Basket_Validation_UseCases.xlsx");
+        runner.validateBasket(
+                "POS_Basket_Validation_UseCases.xlsx", "validateBasket");
     }
-    @Test
-    @Tag("rollback")
-    public void rollbackCoupons() throws Exception {
-
-        BasketValidationService runner =
-                new BasketValidationService();
-
-        runner.rollbackCouponsFromFile("applied-gs1s.txt");
-
-    }
+    
 }
