@@ -186,7 +186,7 @@ public class BasketValidationService {
 	public void localBasketValidation(String excelFile, String sheetName) throws Exception {
 
 		logger.info("====================================");
-		logger.info("Executing Approach_1");
+		logger.info("Executing localBasketValidation");
 		logger.info("====================================");
 
 		ObjectMapper mapper = new ObjectMapper();
@@ -309,7 +309,7 @@ public class BasketValidationService {
 	public void validateBasket(String excelFile, String sheetName) throws Exception {
 
 		logger.info("====================================");
-		logger.info("Executing Approach_2");
+		logger.info("Executing validateBasket");
 		logger.info("====================================");
 
 		ObjectMapper mapper = new ObjectMapper();

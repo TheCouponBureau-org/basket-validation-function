@@ -30,4 +30,15 @@ public class BasketValidationServiceTest {
                 "POS_Basket_Validation_UseCases.xlsx", "validateBasket");
     }
     
+    @Test
+	@Tag("single-json")
+    public void validateSingleJson() throws Exception {
+ 
+        BasketValidationService runner =
+                new BasketValidationService();
+ 
+        runner.validateJsonFile("input-gs1-only.json");
+ 
+    }
+    
 }

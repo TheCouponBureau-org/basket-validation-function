@@ -1,136 +1,198 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://www.w3.org/maven-v4_0_0.xsd">
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://www.w3.org/maven-v4_0_0.xsd">
 
-  <modelVersion>4.0.0</modelVersion>
+	<modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.thecouponbureau.validate.basket</groupId>
-  <artifactId>basket-validator</artifactId>
-  <version>1.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
+	<groupId>org.thecouponbureau.validate.basket</groupId>
+	<artifactId>basket-validator</artifactId>
+	<version>1.0-SNAPSHOT</version>
+	<packaging>jar</packaging>
 
-  <name>basket-validator</name>
+	<name>basket-validator</name>
 
-  <!-- ===================================================== -->
-  <!-- 🔥 Lock Log4j versions (VERY IMPORTANT) -->
-  <!-- ===================================================== -->
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>org.apache.logging.log4j</groupId>
-        <artifactId>log4j-bom</artifactId>
-        <version>2.23.1</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
+	<!-- ===================================================== -->
+	<!-- 🔥 Lock Log4j versions (VERY IMPORTANT) -->
+	<!-- ===================================================== -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.apache.logging.log4j</groupId>
+				<artifactId>log4j-bom</artifactId>
+				<version>2.23.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
-  <dependencies>
+	<dependencies>
 
-    <!-- ===================================================== -->
-    <!-- ✅ JUnit 5 -->
-    <!-- ===================================================== -->
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>5.10.0</version>
-      <scope>test</scope>
-    </dependency>
+		<!-- ===================================================== -->
+		<!-- ✅ JUnit 5 -->
+		<!-- ===================================================== -->
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>5.10.0</version>
+			<scope>test</scope>
+		</dependency>
 
-    <!-- ===================================================== -->
-    <!-- ✅ JSON Assert -->
-    <!-- ===================================================== -->
-    <dependency>
-      <groupId>org.skyscreamer</groupId>
-      <artifactId>jsonassert</artifactId>
-      <version>1.5.1</version>
-      <scope>test</scope>
-    </dependency>
+		<!-- ===================================================== -->
+		<!-- ✅ JSON Assert -->
+		<!-- ===================================================== -->
+		<dependency>
+			<groupId>org.skyscreamer</groupId>
+			<artifactId>jsonassert</artifactId>
+			<version>1.5.1</version>
+			<scope>test</scope>
+		</dependency>
 
-    <!-- ===================================================== -->
-    <!-- ✅ Jackson -->
-    <!-- ===================================================== -->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.17.0</version>
-    </dependency>
+		<!-- ===================================================== -->
+		<!-- ✅ Jackson -->
+		<!-- ===================================================== -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.17.0</version>
+		</dependency>
 
-    <!-- ===================================================== -->
-    <!-- ✅ Apache POI (Excel support) -->
-    <!-- ===================================================== -->
-    <dependency>
-      <groupId>org.apache.poi</groupId>
-      <artifactId>poi</artifactId>
-      <version>5.2.5</version>
-    </dependency>
+		<!-- ===================================================== -->
+		<!-- ✅ Apache POI (Excel support) -->
+		<!-- ===================================================== -->
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi</artifactId>
+			<version>5.2.5</version>
+		</dependency>
 
-    <dependency>
-      <groupId>org.apache.poi</groupId>
-      <artifactId>poi-ooxml</artifactId>
-      <version>5.2.5</version>
-    </dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.2.5</version>
+		</dependency>
 
-    <!-- ===================================================== -->
-    <!-- ✅ Log4j (FIXES YOUR ERROR) -->
-    <!-- ===================================================== -->
-    <dependency>
-      <groupId>org.apache.logging.log4j</groupId>
-      <artifactId>log4j-api</artifactId>
-    </dependency>
+		<!-- ===================================================== -->
+		<!-- ✅ Log4j (FIXES YOUR ERROR) -->
+		<!-- ===================================================== -->
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-api</artifactId>
+		</dependency>
 
-    <dependency>
-      <groupId>org.apache.logging.log4j</groupId>
-      <artifactId>log4j-core</artifactId>
-    </dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-core</artifactId>
+		</dependency>
 
-  </dependencies>
+	</dependencies>
 
-  <build>
-    <plugins>
+	<build>
+		<plugins>
 
-      <!-- ===================================================== -->
-      <!-- ✅ JUnit 5 Runner -->
-      <!-- ===================================================== -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
-        <configuration>
-          <useModulePath>false</useModulePath>
-           <groups>${groups}</groups>
-        </configuration>
-      </plugin>
+			<!-- ===================================================== -->
+			<!-- JUnit 5 Runner -->
+			<!-- ===================================================== -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.5.3</version>
 
-      <!-- ===================================================== -->
-      <!-- ✅ Fat JAR -->
-      <!-- ===================================================== -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.5.3</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-            <configuration>
-              <createDependencyReducedPom>false</createDependencyReducedPom>
-              <shadedArtifactAttached>true</shadedArtifactAttached>
-              <shadedClassifierName>all</shadedClassifierName>
-              <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>org.thecouponbureau.validate.basket.cli.BasketValidationCli</mainClass>
-                </transformer>
-              </transformers>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
+				<configuration>
+					<useModulePath>false</useModulePath>
 
-    </plugins>
-  </build>
+					<!-- Run tests by JUnit 5 @Tag -->
+					<properties>
+						<configurationParameters>
+							junit.jupiter.tags=${tags}
+						</configurationParameters>
+					</properties>
+
+					<reportsDirectory>
+						${project.build.directory}/surefire-reports
+					</reportsDirectory>
+				</configuration>
+			</plugin>
+
+			<!-- ===================================================== -->
+			<!-- HTML Test Report -->
+			<!-- ===================================================== -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-report-plugin</artifactId>
+				<version>3.5.3</version>
+			</plugin>
+
+			<!-- ===================================================== -->
+			<!-- JaCoCo Code Coverage -->
+			<!-- ===================================================== -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.12</version>
+
+				<executions>
+
+					<execution>
+						<id>prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+
+				</executions>
+			</plugin>
+
+			<!-- ===================================================== -->
+			<!-- Executable Fat Jar -->
+			<!-- ===================================================== -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.3</version>
+
+				<executions>
+					<execution>
+						<phase>package</phase>
+
+						<goals>
+							<goal>shade</goal>
+						</goals>
+
+						<configuration>
+
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+
+							<shadedArtifactAttached>true</shadedArtifactAttached>
+
+							<shadedClassifierName>all</shadedClassifierName>
+
+							<transformers>
+
+								<transformer
+									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<mainClass>
+										org.thecouponbureau.validate.basket.cli.BasketValidationCli</mainClass>
+								</transformer>
+
+							</transformers>
+
+						</configuration>
+
+					</execution>
+				</executions>
+
+			</plugin>
+
+		</plugins>
+	</build>
 
 </project>
