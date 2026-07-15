@@ -1,4 +1,4 @@
-package org.thecouponbureau.validate.basket.runners;
+package org.thecouponbureau.validate.basket;
 
 import java.io.BufferedWriter;
 import java.io.FileInputStream;
@@ -28,10 +28,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
-public class BasketValidationServiceRunner {
+public class BasketValidationService {
 
 	 private static final Logger logger =
-	            LogManager.getLogger(BasketValidationServiceRunner.class);
+	            LogManager.getLogger(BasketValidationService.class);
 	private void setTcbConfiguration(BasketValidationInput input) {
 
 		input.tcbBaseUrl = "https://api.try.thecouponbureau.org/";
@@ -382,6 +382,8 @@ public class BasketValidationServiceRunner {
 				JsonNode expectedNode = mapper.readTree(expectedJson);
 				JsonNode actualNode = mapper.readTree(actualJson);
 
+				normalizeCouponCodes(expectedNode, actualNode);
+
 				if (!expectedNode.equals(actualNode)) {
 
 				    failed++;
@@ -662,6 +664,42 @@ public class BasketValidationServiceRunner {
 			logger.info("All coupons rolled back successfully.");
 
 		}
+	}
+	
+	private void normalizeCouponCodes(JsonNode expectedNode, JsonNode actualNode) {
+
+	    JsonNode expectedCoupons = expectedNode.get("applied_coupons");
+	    JsonNode actualCoupons = actualNode.get("applied_coupons");
+
+	    if (expectedCoupons == null || actualCoupons == null) {
+	        return;
+	    }
+
+	    for (int i = 0; i < Math.min(expectedCoupons.size(), actualCoupons.size()); i++) {
+
+	        JsonNode expectedCoupon = expectedCoupons.get(i);
+	        JsonNode actualCoupon = actualCoupons.get(i);
+
+	        JsonNode expectedCodeNode = expectedCoupon.get("coupon_code");
+	        JsonNode actualCodeNode = actualCoupon.get("coupon_code");
+
+	        if (expectedCodeNode == null || actualCodeNode == null) {
+	            continue;
+	        }
+
+	        String expectedCode = expectedCodeNode.asText();
+
+	        if (expectedCode.endsWith("<>")) {
+
+	            String prefix = expectedCode.substring(0, expectedCode.length() - 2);
+
+	            if (actualCodeNode.asText().startsWith(prefix)) {
+
+	                ((com.fasterxml.jackson.databind.node.ObjectNode) actualCoupon)
+	                        .put("coupon_code", expectedCode);
+	            }
+	        }
+	    }
 	}
 
 
