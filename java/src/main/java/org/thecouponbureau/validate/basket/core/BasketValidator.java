@@ -1,8 +1,10 @@
 package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.thecouponbureau.validate.basket.Services.BasketReducerService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
@@ -91,6 +93,28 @@ public class BasketValidator {
                     inputError.message,
                     inputError.details);
         }
+        
+        
+        // Remove duplicate coupons except those starting with 81122
+        List<InputCoupon> uniqueCoupons = new ArrayList<>();
+        Set<String> seenGs1 = new HashSet<>();
+        for (InputCoupon coupon : basketValidationInput.coupons) {
+            if (coupon == null || coupon.gs1 == null) {
+                continue;
+            }
+            // Keep all duplicates for coupons starting with 81122
+            if (coupon.gs1.startsWith("81122")) {
+                uniqueCoupons.add(coupon);
+                continue;
+            }
+
+            // Remove duplicates for all other coupons
+            if (seenGs1.add(coupon.gs1)) {
+                uniqueCoupons.add(coupon);
+            }
+        }
+
+        basketValidationInput.coupons = uniqueCoupons;
         
         List<Coupon> coupons = toInternalCoupons(basketValidationInput.coupons);
         List<Coupon> finalCoupons = prepareCouponsForFinalValidation(
