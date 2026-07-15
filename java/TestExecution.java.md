@@ -307,7 +307,7 @@ mvn surefire-report:report
 Then open:
 
 ```
-target/site/surefire-report.html
+target/reports/surefire.html
 ```
 
 ---
