@@ -93,7 +93,9 @@ System.out.println(
 
 for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
     System.out.println(
-            "serialized_gs1=" + item.gs1 + ", base_gs1=" + item.baseGs1);
+            "serialized_gs1=" + item.gs1
+                    + ", base_gs1=" + item.baseGs1
+                    + ", validated=" + item.validated);
 }
 ```
 
@@ -123,7 +125,8 @@ Response:
   },
   {
     "gs1": "8112009988459000019133520317194861",
-    "base_gs1": "811200998845900001"
+    "base_gs1": "811200998845900001",
+    "validated": true
   }
 ]
 ```
@@ -144,6 +147,8 @@ Response:
 | TCB fetch-code response | `8112009988459000139133621151540206` | `811200998845900013` |
 | TCB fetch-code response | `8112009988459000149133342361220548` | `811200998845900014` |
 | TCB fetch-code response | `8112009988459000199133782272284945` | `811200998845900019` |
+
+For TCB fetch-code results, `validated = true` means the coupon was already validated by TCB during fetch-code expansion.
 
 #### Step 4. Load purchase requirements from the local `base_gs1` database
 

@@ -163,6 +163,7 @@ public class TcbScannedGs1Service {
                 SerializedGs1Data data = new SerializedGs1Data();
                 data.gs1 = redeemedCoupon.gs1;
                 data.baseGs1 = redeemedCoupon.masterOfferFile;
+                data.validated = true;
                 resolvedGs1s.add(data);
             }
 
@@ -251,6 +252,7 @@ public class TcbScannedGs1Service {
         public String gs1;
         @JsonProperty("base_gs1")
         public String baseGs1;
+        public Boolean validated;
     }
 
     private static class RedeemRequest {

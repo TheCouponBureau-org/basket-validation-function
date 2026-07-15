@@ -18,6 +18,7 @@ public class TcbScannedGs1ServiceTest {
         assertEquals(1, parsed.size());
         assertEquals("8112209988459000329165266614604064", parsed.get(0).gs1);
         assertEquals("811220998845900032", parsed.get(0).baseGs1);
+        assertEquals(null, parsed.get(0).validated);
     }
 
     @Test
@@ -30,6 +31,8 @@ public class TcbScannedGs1ServiceTest {
         assertEquals(2, parsed.size());
         assertEquals("811220998845900032", parsed.get(0).baseGs1);
         assertEquals("811220998845900034", parsed.get(1).baseGs1);
+        assertEquals(null, parsed.get(0).validated);
+        assertEquals(null, parsed.get(1).validated);
     }
 
     @Test
@@ -57,8 +60,10 @@ public class TcbScannedGs1ServiceTest {
         assertEquals(2, resolved.size());
         assertEquals("8112209988459000329165266614604064", resolved.get(0).gs1);
         assertEquals("811220998845900032", resolved.get(0).baseGs1);
+        assertEquals(true, resolved.get(0).validated);
         assertEquals("8112209988459000349165768322093822", resolved.get(1).gs1);
         assertEquals("811220998845900034", resolved.get(1).baseGs1);
+        assertEquals(true, resolved.get(1).validated);
     }
 
     @Test
@@ -105,5 +110,6 @@ public class TcbScannedGs1ServiceTest {
         assertEquals(1, resolved.size());
         assertEquals("8112209988459000329165266614604064", resolved.get(0).gs1);
         assertEquals("811220998845900032", resolved.get(0).baseGs1);
+        assertEquals(true, resolved.get(0).validated);
     }
 }
