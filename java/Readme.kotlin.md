@@ -540,6 +540,47 @@ Response:
 }
 ```
 
+## End-to-End Flow Diagram
+
+```text
+1. POS scans coupons and builds basket
+   |
+   v
+2. Parse scanned GS1 values
+   - serialized GS1s parsed locally
+   - fetch codes expanded through TCB if needed
+   |
+   v
+3. Use base_gs1 to load purchase requirements from local DB
+   |
+   v
+4. Call localBasketValidation(...) one coupon at a time
+   - drop coupons that are not basket-eligible locally
+   |
+   v
+5. Build final validateBasketHelper(...) input
+   - gs1
+   - purchase_requirement
+   - validated=true only for coupons already validated earlier
+   |
+   v
+6. Call validateBasketHelper(...)
+   - skips TCB for validated=true coupons
+   - calls TCB retailer/redeem for remaining coupons
+     with pre_process=yes and no_purchase_requirement=yes
+   - removes coupons not returned in newly_redeemed
+   - calculates final discount locally
+   |
+   v
+7. POS applies discount to transaction
+   |
+   v
+8. After transaction success, call redeemCoupons(...)
+   |
+   v
+9. If transaction is voided later, call rollbackCoupons(...)
+```
+
 ## Complete Kotlin Example
 
 The following example hardcodes basket data and coupon purchase requirements directly in code and shows the full SDK flow without using any fetch code.
