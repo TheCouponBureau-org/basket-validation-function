@@ -25,6 +25,7 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Validat
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class BasketValidationService {
 
@@ -558,8 +559,11 @@ public class BasketValidationService {
 		logger.info("Failed    : " + failed);
 		logger.info("Skipped   : " + skipped);
 		
-		logger.info("Failed Rows:");
-		logger.info(failedRows);
+		if (!failedRows.isEmpty()) {
+		    fail("Validation failed for rows: " + failedRows);
+		}
+		//logger.info("Failed Rows:");
+		//logger.info(failedRows);
 	}
 	
 	private void normalizeCouponCodes(JsonNode expectedNode, JsonNode actualNode) {
