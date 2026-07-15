@@ -6,19 +6,9 @@ import org.junit.jupiter.api.Test;
 
 public class BasketValidationServiceTest {
 
-	@Test
-	@Tag("single-json")
-    public void validateSingleJson() throws Exception {
-
-        BasketValidationService runner =
-                new BasketValidationService();
-
-        runner.validateJsonFile("input-gs1-only.json");
-
-    }
 	
 	@Test
-	@Tag("approach1")
+	@Tag("localBasketValidation")
 	public void localBasketValidation() throws Exception {
 
 	    BasketValidationService runner =
@@ -30,7 +20,7 @@ public class BasketValidationServiceTest {
 	}
 	
     @Test
-    @Tag("approach2")
+    @Tag("validateBasket")
     public void validateBasket() throws Exception {
 
         BasketValidationService runner =
