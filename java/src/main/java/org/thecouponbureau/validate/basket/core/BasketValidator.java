@@ -1,17 +1,15 @@
 package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import java.util.Set;
 
 import org.thecouponbureau.validate.basket.Services.BasketReducerService;
-import org.thecouponbureau.validate.basket.Services.TcbCouponResolutionService;
 import org.thecouponbureau.validate.basket.Services.DiscountService;
 import org.thecouponbureau.validate.basket.Services.RequirementService;
+import org.thecouponbureau.validate.basket.Services.TcbCouponResolutionService;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
 import org.thecouponbureau.validate.basket.helper.BasketHelper.Status;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
@@ -26,6 +24,9 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.ReduceB
 import org.thecouponbureau.validate.basket.model.basketValidationResults.UnitsToPurchaseHolder;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationError;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
 /**
  * Main orchestration entrypoint for basket validation.
@@ -85,10 +86,27 @@ public class BasketValidator {
                     inputError.details);
         }
         
-        basketValidationInput.coupons = new ArrayList<>(
-                new LinkedHashSet<>(basketValidationInput.coupons)
+        //Remove duplicate coupons if not 81122
+        List<String> uniqueCoupons = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
 
-        );
+        for (String coupon : basketValidationInput.coupons) {
+
+            // Keep all duplicates for coupons starting with 81122
+            if (coupon != null && coupon.startsWith("81122")) {
+                uniqueCoupons.add(coupon);
+                continue;
+            }
+
+            // Remove duplicates for all other coupons
+            if (seen.add(coupon)) {
+                uniqueCoupons.add(coupon);
+            }
+        }
+
+        basketValidationInput.coupons = uniqueCoupons;
+
+       
 
         List<Coupon> resolvedCoupons = TcbCouponResolutionService.resolveCoupons(
                 basketValidationInput.tcbBaseUrl,
