@@ -1,6 +1,13 @@
 # Kotlin integration flow
 
+## High Level Architecture
+
 ![High Level Architecture](highl.png)
+
+<br/>
+<br/>
+
+## Sequence Diagram
 
 ![Sequence Diagram](flow.png)
 
