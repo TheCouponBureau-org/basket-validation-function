@@ -1,6 +1,6 @@
 # Java integration flow
 
-![High Level Architecture](highl.jpeg)
+![High Level Architecture](highl.png)
 
 ![Sequence Diagram](flow.png)
 
