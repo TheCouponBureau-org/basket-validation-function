@@ -108,22 +108,6 @@ Contains the following test methods:
 
 ---
 
-# Running the Executable Jar
-
-Example:
-
-```bash
-java -jar target/basket-validator-1.0-SNAPSHOT-all.jar
-```
-
-Example:
-
-```bash
-java -jar target/basket-validator-1.0-SNAPSHOT-all.jar input-gs1-only.json
-```
-
----
-
 # Reports
 
 ## JUnit XML Report
