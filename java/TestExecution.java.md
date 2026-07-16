@@ -48,13 +48,12 @@ This generates:
 ```
 target/
 ├── basket-validator-1.0-SNAPSHOT.jar
-└── basket-validator-1.0-SNAPSHOT-all.jar
 ```
 
-The executable jar is:
+The library JAR for use as a dependency is:
 
 ```
-basket-validator-1.0-SNAPSHOT-all.jar
+basket-validator-1.0-SNAPSHOT.jar
 ```
 
 ---
