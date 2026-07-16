@@ -1,6 +1,8 @@
 # Kotlin integration flow
 
-![Integration Flow](flow.png)
+![High Level Architecture](highl.jpeg)
+
+![Sequence Diagram](flow.png)
 
 ## 1. Build the JAR
 
