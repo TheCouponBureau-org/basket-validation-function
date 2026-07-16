@@ -22,7 +22,7 @@ From the `java/` folder:
 Use the fat JAR for integration:
 
 ```bash
-target/basket-validator-1.0-SNAPSHOT-all.jar
+target/basket-validator-1.0-SNAPSHOT.jar
 ```
 
 ## 2. Add the JAR to your project
@@ -30,7 +30,7 @@ target/basket-validator-1.0-SNAPSHOT-all.jar
 Copy the fat JAR into your application, for example:
 
 ```bash
-your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT-all.jar
+your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT.jar
 ```
 
 After that, add the JAR from your `lib/` folder to your Kotlin project classpath using your normal build setup.
