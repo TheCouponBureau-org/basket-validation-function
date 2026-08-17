@@ -76,6 +76,47 @@ Recommended storage model:
 
 The `purchase_requirement` JSON should be stored exactly as received.
 
+## 4. Sync MOF purchase requirements into your local database
+
+Use the SDK helper below to pull updated MOF purchase requirements from TCB Portal and map them directly into the SDK's `PurchaseRequirement` structure.
+
+Request:
+
+```java
+TcbMofSyncService.SyncMofResponse mofResponse =
+        TcbMofSyncService.syncMasterOfferFiles(
+                "https://api.portal.thecouponbureau.org",
+                "YOUR_ACCESS_KEY",
+                accessToken,
+                "incremental",
+                "");
+
+for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
+    System.out.println("base_gs1 = " + record.baseGs1);
+    System.out.println(
+            "primaryPurchaseGtins = "
+                    + record.purchaseRequirement.primaryPurchaseGtins);
+}
+
+System.out.println("nextPageNo = " + mofResponse.nextPageNo);
+```
+
+Mode behavior:
+
+- `initial` = last 6 months through today
+- `incremental` = yesterday through today
+
+Example date windows if today is `2026-08-17`:
+
+- `initial` => `2026-02-17` through `2026-08-17`
+- `incremental` => `2026-08-16` through `2026-08-17`
+
+Retry behavior for this helper:
+
+- retries only on `5XX`
+- first retry after `10` seconds
+- second retry after `20` seconds
+
 Example MOF / purchase requirement payload:
 
 ```json

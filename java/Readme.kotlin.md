@@ -35,7 +35,59 @@ your-kotlin-project/lib/basket-validator-1.0-SNAPSHOT.jar
 
 After that, add the JAR from your `lib/` folder to your Kotlin project classpath using your normal build setup.
 
-## 3. Step-by-step integration
+## 3. Sync MOF purchase requirements into your server
+
+Use `TcbMofSyncService.syncMasterOfferFiles(...)` to pull Master Offer File purchase requirements into your database so basket validation can use local purchase requirements instead of waiting on live MOF lookups.
+
+Request:
+
+```kotlin
+import org.thecouponbureau.validate.basket.Services.TcbMofSyncService
+
+val mofResponse = TcbMofSyncService.syncMasterOfferFiles(
+    "https://api.portal.thecouponbureau.org",
+    "YOUR_ACCESS_KEY",
+    accessToken,
+    "initial",
+    ""
+)
+
+println("nextPageNo = ${mofResponse.nextPageNo}")
+
+for (record in mofResponse.data) {
+    println("base_gs1 = ${record.baseGs1}")
+    println("primaryPurchaseGtins = ${record.purchaseRequirement.primaryPurchaseGtins}")
+}
+```
+
+Mode behavior:
+
+- `initial` = last 6 months through today
+- `incremental` = yesterday through today
+
+Example date windows if today is `2026-08-17`:
+
+- `initial` => `2026-02-17` through `2026-08-17`
+- `incremental` => `2026-08-16` through `2026-08-17`
+
+Returned shape:
+
+- `data[].baseGs1`
+- `data[].purchaseRequirement.primaryPurchaseGtins`
+- `data[].purchaseRequirement.primaryPurchaseRequirements`
+- `data[].purchaseRequirement.primaryPurchaseReqCode`
+- `data[].purchaseRequirement.saveValueCode`
+- and the other SDK-native `PurchaseRequirement` fields
+
+Use `nextPageNo` to request the next page. When `nextPageNo = -1`, there are no more records.
+
+Retry behavior for this helper:
+
+- retries only on `5XX`
+- first retry after `10` seconds
+- second retry after `20` seconds
+
+## 4. Step-by-step integration
 
 This walkthrough uses real serialized coupon examples and `base_gs1` values from `java/POS_Basket_Validation_UseCases.xlsx`.
 
