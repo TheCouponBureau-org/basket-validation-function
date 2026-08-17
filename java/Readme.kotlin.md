@@ -60,6 +60,24 @@ for (record in mofResponse.data) {
 }
 ```
 
+Example Redis storage pattern:
+
+```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import redis.clients.jedis.Jedis
+
+val mapper = ObjectMapper()
+
+Jedis("localhost", 6379).use { jedis ->
+    for (record in mofResponse.data) {
+        val purchaseRequirementJson =
+            mapper.writeValueAsString(record.purchaseRequirement)
+
+        jedis.set(record.baseGs1, purchaseRequirementJson)
+    }
+}
+```
+
 Mode behavior:
 
 - `initial` = last 6 months through today
@@ -215,6 +233,38 @@ For TCB fetch-code results, `validated = true` means the coupon was already vali
 
 Use `base_gs1` as the key into your local offer / purchase-requirement database.
 
+If you store purchase requirements in Redis, use:
+
+- key = `base_gs1`
+- value = serialized `purchase_requirement` JSON
+
+Example Redis lookup:
+
+```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+import redis.clients.jedis.Jedis
+
+val mapper = ObjectMapper()
+
+Jedis("localhost", 6379).use { jedis ->
+    for (item in resolved) {
+        val purchaseRequirementJson = jedis.get(item.baseGs1) ?: continue
+
+        val purchaseRequirement =
+            mapper.readValue(
+                purchaseRequirementJson,
+                PurchaseRequirement::class.java
+            )
+
+        println(
+            "gs1=${item.gs1}, base_gs1=${item.baseGs1}, validated=${item.validated}, " +
+                "primaryPurchaseGtins=${purchaseRequirement.primaryPurchaseGtins}"
+        )
+    }
+}
+```
+
 Response from local DB lookup:
 
 | `base_gs1` | Workbook offer summary |
@@ -250,6 +300,70 @@ for (item in resolved) {
             this.purchaseRequirement = purchaseRequirement
         }
     )
+}
+```
+
+Example `loadPurchaseRequirementDb()` implementation using Redis:
+
+```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+import redis.clients.jedis.Jedis
+
+fun loadPurchaseRequirementDb(): Map<String, PurchaseRequirement> {
+    val mapper = ObjectMapper()
+    val purchaseRequirements = mutableMapOf<String, PurchaseRequirement>()
+
+    Jedis("localhost", 6379).use { jedis ->
+        var cursor = "0"
+        do {
+            val scanResult = jedis.scan(cursor)
+            cursor = scanResult.cursor
+
+            for (baseGs1 in scanResult.result) {
+                val purchaseRequirementJson = jedis.get(baseGs1) ?: continue
+
+                purchaseRequirements[baseGs1] =
+                    mapper.readValue(
+                        purchaseRequirementJson,
+                        PurchaseRequirement::class.java
+                    )
+            }
+        } while (cursor != "0")
+    }
+
+    return purchaseRequirements
+}
+```
+
+If you are using Redis instead of an in-memory map, the loop becomes:
+
+```kotlin
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
+import redis.clients.jedis.Jedis
+
+val mapper = ObjectMapper()
+val coupons = mutableListOf<InputCoupon>()
+
+Jedis("localhost", 6379).use { jedis ->
+    for (item in resolved) {
+        val purchaseRequirementJson = jedis.get(item.baseGs1) ?: continue
+
+        val purchaseRequirement =
+            mapper.readValue(
+                purchaseRequirementJson,
+                PurchaseRequirement::class.java
+            )
+
+        coupons.add(
+            InputCoupon().apply {
+                gs1 = item.gs1
+                this.purchaseRequirement = purchaseRequirement
+                validated = item.validated
+            }
+        )
+    }
 }
 ```
 

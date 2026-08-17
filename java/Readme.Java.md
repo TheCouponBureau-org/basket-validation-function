@@ -62,6 +62,24 @@ for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
 }
 ```
 
+Example Redis storage pattern:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import redis.clients.jedis.Jedis;
+
+ObjectMapper mapper = new ObjectMapper();
+
+try (Jedis jedis = new Jedis("localhost", 6379)) {
+    for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
+        String purchaseRequirementJson =
+                mapper.writeValueAsString(record.purchaseRequirement);
+
+        jedis.set(record.baseGs1, purchaseRequirementJson);
+    }
+}
+```
+
 Mode behavior:
 
 - `initial` = last 6 months through today
@@ -217,6 +235,44 @@ For TCB fetch-code results, `validated = true` means the coupon was already vali
 
 Use `base_gs1` as the key into your local offer / purchase-requirement database.
 
+If you store purchase requirements in Redis, use:
+
+- key = `base_gs1`
+- value = serialized `purchase_requirement` JSON
+
+Example Redis lookup:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import redis.clients.jedis.Jedis;
+
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
+
+ObjectMapper mapper = new ObjectMapper();
+
+try (Jedis jedis = new Jedis("localhost", 6379)) {
+    for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
+        String purchaseRequirementJson = jedis.get(item.baseGs1);
+
+        if (purchaseRequirementJson == null) {
+            continue;
+        }
+
+        PurchaseRequirement purchaseRequirement =
+                mapper.readValue(
+                        purchaseRequirementJson,
+                        PurchaseRequirement.class);
+
+        System.out.println(
+                "gs1=" + item.gs1
+                        + ", base_gs1=" + item.baseGs1
+                        + ", validated=" + item.validated
+                        + ", primaryPurchaseGtins="
+                        + purchaseRequirement.primaryPurchaseGtins);
+    }
+}
+```
+
 Response from local DB lookup:
 
 | `base_gs1` | Workbook offer summary |
@@ -259,6 +315,38 @@ for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
     coupon.gs1 = item.gs1;
     coupon.purchaseRequirement = purchaseRequirement;
     coupons.add(coupon);
+}
+```
+
+If you are using Redis instead of an in-memory map, the loop becomes:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import redis.clients.jedis.Jedis;
+
+ObjectMapper mapper = new ObjectMapper();
+
+List<InputCoupon> coupons = new ArrayList<>();
+
+try (Jedis jedis = new Jedis("localhost", 6379)) {
+    for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
+        String purchaseRequirementJson = jedis.get(item.baseGs1);
+
+        if (purchaseRequirementJson == null) {
+            continue;
+        }
+
+        PurchaseRequirement purchaseRequirement =
+                mapper.readValue(
+                        purchaseRequirementJson,
+                        PurchaseRequirement.class);
+
+        InputCoupon coupon = new InputCoupon();
+        coupon.gs1 = item.gs1;
+        coupon.purchaseRequirement = purchaseRequirement;
+        coupon.validated = item.validated;
+        coupons.add(coupon);
+    }
 }
 ```
 
