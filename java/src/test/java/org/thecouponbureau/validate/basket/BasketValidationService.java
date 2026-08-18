@@ -586,36 +586,43 @@ public class BasketValidationService {
 				if (!sync_mof_data) {
 
 					/**
-					 * sync mof data with purchase requirements and set in local redis
+					 * Sync MOF data with purchase requirements and store in local Redis
 					 */
 					ObjectMapper mapper1 = new ObjectMapper();
 					String pageNo = "";
+
 					while (true) {
+
 						TcbMofSyncService.SyncMofResponse mofResponse = TcbMofSyncService.syncMasterOfferFiles(
 								input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, "initial", pageNo);
 
-						logger.info("Total MOF Records fetched= " + mofResponse.data.size());
-			
-						for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
-							logger.info("base_gs1 = " + record.baseGs1);
-							logger.info("purchaseRequirementJson = "
-									+ mapper1.writeValueAsString(record.purchaseRequirement));
-						}
+						logger.info("Total MOF Records fetched = " + mofResponse.data.size());
 
 						try (Jedis jedis = new Jedis("localhost", 6379)) {
+
 							for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
+
 								String purchaseRequirementJson = mapper1.writeValueAsString(record.purchaseRequirement);
+
+								logger.info("base_gs1 = " + record.baseGs1);
+								logger.info("purchaseRequirementJson = " + purchaseRequirementJson);
+
 								jedis.set(record.baseGs1, purchaseRequirementJson);
 							}
 						}
 
-						if (mofResponse.nextPageNo == "-1") {
+						logger.info("nextPageNo = " + mofResponse.nextPageNo);
+
+						// Stop when there are no more pages
+						if ("-1".equals(String.valueOf(mofResponse.nextPageNo))) {
+							logger.info("MOF sync completed. Reached last page.");
 							break;
 						}
+
 						pageNo = String.valueOf(mofResponse.nextPageNo);
-						logger.info("nextPageNo = " + mofResponse.nextPageNo);
-						Thread.sleep(10000);	
+
 					}
+
 					sync_mof_data = true;
 				}
 
@@ -635,9 +642,9 @@ public class BasketValidationService {
 				 * Replace actual input coupons with input + purchase requirements
 				 */
 				if (inputCouponsWithPurchaseRequirements != null) {
-				    input.coupons = inputCouponsWithPurchaseRequirements;
+					input.coupons = inputCouponsWithPurchaseRequirements;
 				}
-				
+
 				ValidationResult result = BasketValidator.validateBasketHelper(input);
 				String actualJson = mapper.writerWithDefaultPrettyPrinter()
 						.writeValueAsString(result.basketValidationOutput);
