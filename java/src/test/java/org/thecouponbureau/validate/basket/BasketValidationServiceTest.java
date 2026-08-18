@@ -31,6 +31,17 @@ public class BasketValidationServiceTest {
     }
     
     @Test
+    @Tag("validateBasketWithRedis")
+    public void validateBasketWithRedis() throws Exception {
+
+        BasketValidationService runner =
+                new BasketValidationService();
+
+        runner.validateBasketWithRedis(
+                "POS_Basket_Validation_UseCases.xlsx", "validateBasket");
+    }
+    
+    @Test
 	@Tag("single-json")
     public void validateSingleJson() throws Exception {
  

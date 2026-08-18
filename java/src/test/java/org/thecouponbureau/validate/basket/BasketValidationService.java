@@ -566,6 +566,265 @@ public class BasketValidationService {
 		//logger.info(failedRows);
 	}
 	
+	public void validateBasketWithRedis(String excelFile, String sheetName) throws Exception {
+
+		logger.info("====================================");
+		logger.info("Executing validateBasket With Redis");
+		logger.info("====================================");
+
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+		String excelPath =
+				System.getProperty("user.dir")
+				+ "/" + excelFile;
+
+		Workbook workbook =
+				new XSSFWorkbook(new FileInputStream(excelPath));
+
+		Sheet sheet = workbook.getSheet(sheetName);
+
+		int processed = 0;
+		int passed = 0;
+		int failed = 0;
+		int skipped = 0;
+
+		List<Integer> failedRows = new ArrayList<>();
+
+		for (int rowNum = 1; rowNum <= sheet.getLastRowNum(); rowNum++) {
+
+			Row row = sheet.getRow(rowNum);
+
+			if (row == null) {
+				skipped++;
+				continue;
+			}
+
+			if (row.getCell(5) == null
+					|| row.getCell(5).toString().trim().isEmpty()) {
+				skipped++;
+				continue;
+			}
+
+			String scenario = "";
+
+			if (row.getCell(0) != null) {
+				scenario = row.getCell(0).toString().trim();
+			}
+
+			String inputJson =
+					row.getCell(5).getStringCellValue().trim();
+			
+			String expectedJson = "";
+
+			if (row.getCell(7) != null) {
+			    expectedJson = row.getCell(7).getStringCellValue().trim();
+			}
+
+			processed++;
+
+			try {
+
+				BasketValidationInput input =
+						mapper.readValue(inputJson,
+								BasketValidationInput.class);
+
+				setTcbConfiguration(input);
+
+				ValidationResult result =
+						BasketValidator.validateBasketHelper(input);
+				String actualJson =
+				        mapper.writerWithDefaultPrettyPrinter()
+				                .writeValueAsString(result.basketValidationOutput);
+
+				JsonNode expectedNode = mapper.readTree(expectedJson);
+				JsonNode actualNode = mapper.readTree(actualJson);
+
+				normalizeCouponCodes(expectedNode, actualNode);
+
+				if (!expectedNode.equals(actualNode)) {
+
+				    failed++;
+				    failedRows.add(rowNum + 1);
+
+				    logger.info("===========================================================");
+				    logger.info("➡️ Processing row: " + (rowNum + 1));
+				    logger.info("===========================================================");
+
+				    logger.info("");
+				    logger.info("Scenario :");
+				    logger.info(scenario);
+
+				    logger.info("");
+				    logger.error("❌ VALIDATION FAILED");
+
+				    logger.info("");
+				    logger.info("Basket Validation Input:");
+				    logger.info(inputJson);
+
+				    logger.info("");
+				    logger.info("Expected Output:");
+				    logger.info(expectedJson);
+
+				    logger.info("");
+				    logger.info("Actual Output:");
+				    logger.info(actualJson);
+
+				    continue;
+				}
+
+				List<String> gs1List = new ArrayList<>();
+
+				for (AppliedCoupon coupon :
+					result.basketValidationOutput.appliedCoupons) {
+
+					gs1List.add(coupon.couponCode);
+
+				}
+
+				if (!gs1List.isEmpty()) {
+
+				    List<String> rollbackGs1List = new ArrayList<>();
+
+				    try {
+				    					    
+					    logger.info("===========================================================");
+					    logger.info("➡️ Processing row: " + (rowNum + 1));
+					    logger.info("===========================================================");
+					    
+					    logger.info("");
+					    logger.info("Scenario :");
+					    logger.info(scenario);
+
+				    	String redeemResponse =
+				                TcbCouponRedeemService.redeemCoupons(
+				                        input.tcbBaseUrl,
+				                        input.tcbAccessKey,
+				                        input.tcbAccessToken,
+				                        gs1List);
+				        
+				    	logger.info("");
+				        logger.info("Redeem Response:");
+				        logger.info(redeemResponse);
+
+				        JsonNode redeemNode = mapper.readTree(redeemResponse);
+
+				        JsonNode newlyRedeemed = redeemNode.get("newly_redeemed");
+
+				        if (newlyRedeemed != null) {
+
+				            for (JsonNode coupon : newlyRedeemed) {
+
+				                rollbackGs1List.add(
+				                        coupon.get("gs1").asText());
+
+				            }
+
+				        }
+
+				    } finally {
+
+				        if (!rollbackGs1List.isEmpty()) {
+
+				        	logger.info("");
+				            logger.info("Rolling Back Coupons:");
+				            logger.info(rollbackGs1List);
+
+				            Map<String, String> rollbackResponses =
+				                    TcbCouponRollbackService.rollbackCoupons(
+				                            input.tcbBaseUrl,
+				                            input.tcbAccessKey,
+				                            input.tcbAccessToken,
+				                            rollbackGs1List);
+
+				            
+				            logger.info("Rollback Response:");
+
+				            for (Map.Entry<String, String> entry :
+				                    rollbackResponses.entrySet()) {
+
+				            	logger.info("");
+				                logger.info("----------------------------------------");
+				                logger.info("GS1 : " + entry.getKey());
+				                logger.info(entry.getValue());
+
+				            }
+				        } else {
+				        	
+				        	logger.info("");
+				            logger.info("No redeemed coupons found for rollback.");
+
+				        }
+				    }
+
+				    passed++;	    
+				    
+				   logger.info("");
+				    logger.info("✅ PASS");
+
+				} else {
+
+					passed++;
+				    
+				    logger.info("===========================================================");
+				    logger.info("➡️ Processing row: " + (rowNum + 1));
+				    logger.info("===========================================================");
+				    
+				    logger.info("");
+				    logger.info("Scenario :");
+				    logger.info(scenario);
+				    
+				    logger.info("");
+				    logger.info("No coupons applied. Redeem/Rollback skipped.");
+				    
+				    logger.info("");
+				    logger.info("✅ PASS");
+				    logger.info("");
+				}
+			}
+			catch (Exception e) {
+
+				failed++;
+				failedRows.add(rowNum + 1);
+
+				
+				logger.info("===========================================================");
+				logger.info("➡️ Processing row: " + (rowNum + 1));
+				logger.info("===========================================================");
+				
+				logger.info("");
+				logger.info("Scenario :");
+				logger.info(scenario);
+				
+				logger.info("");
+				logger.error("❌ FAIL");
+				
+				logger.info("");
+				logger.info("Basket Validation Input:");
+				logger.info(inputJson);
+				
+				logger.error("Exception occurred", e);
+			}
+		}
+
+		workbook.close();
+	
+		logger.info("====================================");
+		logger.info("📊 FINAL RESULT");
+		logger.info("====================================");
+		
+		logger.info("Processed : " + processed);
+		logger.info("Passed    : " + passed);
+		logger.info("Failed    : " + failed);
+		logger.info("Skipped   : " + skipped);
+		
+		if (!failedRows.isEmpty()) {
+		    fail("Validation failed for rows: " + failedRows);
+		}
+		//logger.info("Failed Rows:");
+		//logger.info(failedRows);
+	}
+	
 	private void normalizeCouponCodes(JsonNode expectedNode, JsonNode actualNode) {
 
 	    JsonNode expectedCoupons = expectedNode.get("applied_coupons");
