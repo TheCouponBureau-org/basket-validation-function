@@ -2,8 +2,11 @@ package org.thecouponbureau.validate.basket.Services;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.Test;
 
@@ -53,5 +56,24 @@ public class TcbMofSyncServiceTest {
         assertEquals(Long.valueOf(2), records.get(0).purchaseRequirement.primaryPurchaseRequirements);
         assertEquals(Integer.valueOf(0), records.get(0).purchaseRequirement.primaryPurchaseReqCode);
         assertEquals(Integer.valueOf(0), records.get(0).purchaseRequirement.saveValueCode);
+    }
+
+    @Test
+    void deserializesCamelCaseNextPageNoFromApiResponse() throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+
+        String json = "{"
+                + "\"status\":\"success\","
+                + "\"data\":[],"
+                + "\"nextPageNo\":\"abc123\","
+                + "\"execution_id\":\"exec-1\","
+                + "\"execution_time_in_ms\":10,"
+                + "\"execution_start_time\":20"
+                + "}";
+
+        TcbMofSyncService.ApiResponse response =
+                mapper.readValue(json, TcbMofSyncService.ApiResponse.class);
+
+        assertEquals("abc123", response.nextPageNo);
     }
 }

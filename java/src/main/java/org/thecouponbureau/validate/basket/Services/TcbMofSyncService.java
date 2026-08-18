@@ -285,6 +285,7 @@ public class TcbMofSyncService {
     static class ApiResponse {
         public String status;
         public List<ApiRecord> data;
+        @JsonProperty("nextPageNo")
         public String nextPageNo;
         @JsonProperty("execution_id")
         public String executionId;
