@@ -17,8 +17,9 @@ public class TcbScannedGs1Service {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-    private static final int SERIALIZED_GS1_LENGTH = 34;
-    private static final int BASE_GS1_LENGTH = 18;
+    private static final int MIN_SERIALIZED_GS1_LENGTH = 34;
+    private static final int MIN_BASE_GS1_LENGTH = 18;
+    private static final int SERIAL_COMPONENT_LENGTH = 16;
     private static final int REDEEM_CHUNK_SIZE = 15;
     private static final int SINGLE_REDEEM_CODE_LENGTH = 16;
     private static final String CONSUMER_SERIALIZED_PREFIX = "8112";
@@ -41,7 +42,7 @@ public class TcbScannedGs1Service {
         validateInputs(baseUrl, accessKey, accessToken, scannedGs1s);
 
         List<SerializedGs1Data> resolvedGs1s = new ArrayList<>();
-        List<List<String>> chunks = new ArrayList<>();
+        List<List<String>> chunks = buildRedeemBatches(scannedGs1s);
         for (String scannedGs1 : scannedGs1s) {
             if (isBlank(scannedGs1)) {
                 continue;
@@ -52,11 +53,6 @@ public class TcbScannedGs1Service {
 
             if (!locallyParsed.isEmpty()) {
                 resolvedGs1s.addAll(locallyParsed);
-                continue;
-            }
-
-            if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
-                chunks.add(List.of(normalizedGs1));
             }
         }
 
@@ -81,6 +77,7 @@ public class TcbScannedGs1Service {
 
     static List<List<String>> buildRedeemBatches(List<String> scannedGs1s) {
         List<List<String>> batches = new ArrayList<>();
+        List<String> groupedRedeemCodes = new ArrayList<>();
 
         for (String scannedGs1 : scannedGs1s) {
             if (isBlank(scannedGs1)) {
@@ -95,9 +92,38 @@ public class TcbScannedGs1Service {
 
             if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
                 batches.add(List.of(normalizedGs1));
+                continue;
             }
+
+            groupedRedeemCodes.add(normalizedGs1);
         }
+
+        batches.addAll(chunkGs1s(groupedRedeemCodes, REDEEM_CHUNK_SIZE));
+
         return batches;
+    }
+
+    static int resolveBaseGs1Length(String serializedGs1, int startIndex) {
+        int extensionDigitIndex = startIndex + 5;
+        if (serializedGs1.length() <= extensionDigitIndex) {
+            return -1;
+        }
+
+        char extensionDigit = serializedGs1.charAt(extensionDigitIndex);
+        if (!Character.isDigit(extensionDigit)) {
+            return -1;
+        }
+
+        return MIN_BASE_GS1_LENGTH + Character.getNumericValue(extensionDigit);
+    }
+
+    static int resolveSerializedGs1Length(String scannedGs1, int startIndex) {
+        int baseGs1Length = resolveBaseGs1Length(scannedGs1, startIndex);
+        if (baseGs1Length < 0) {
+            return -1;
+        }
+
+        return baseGs1Length + SERIAL_COMPONENT_LENGTH;
     }
 
     /**
@@ -109,24 +135,34 @@ public class TcbScannedGs1Service {
         List<SerializedGs1Data> parsedGs1s = new ArrayList<>();
 
         if (isBlank(scannedGs1)
-                || scannedGs1.length() < SERIALIZED_GS1_LENGTH
-                || scannedGs1.length() % SERIALIZED_GS1_LENGTH != 0
+                || scannedGs1.length() < MIN_SERIALIZED_GS1_LENGTH
                 || !isDigitsOnly(scannedGs1)) {
             return parsedGs1s;
         }
 
-        for (int index = 0; index < scannedGs1.length(); index += SERIALIZED_GS1_LENGTH) {
-            String serializedGs1 =
-                    scannedGs1.substring(index, index + SERIALIZED_GS1_LENGTH);
-
-            if (!serializedGs1.startsWith(CONSUMER_SERIALIZED_PREFIX)) {
+        for (int index = 0; index < scannedGs1.length();) {
+            if (!scannedGs1.startsWith(CONSUMER_SERIALIZED_PREFIX, index)) {
                 return new ArrayList<>();
             }
 
+            int baseGs1Length = resolveBaseGs1Length(scannedGs1, index);
+            int serializedGs1Length = resolveSerializedGs1Length(scannedGs1, index);
+
+            if (baseGs1Length < 0
+                    || serializedGs1Length < MIN_SERIALIZED_GS1_LENGTH
+                    || index + serializedGs1Length > scannedGs1.length()) {
+                return new ArrayList<>();
+            }
+
+            String serializedGs1 =
+                    scannedGs1.substring(index, index + serializedGs1Length);
+
+
             SerializedGs1Data data = new SerializedGs1Data();
             data.gs1 = serializedGs1;
-            data.baseGs1 = serializedGs1.substring(0, BASE_GS1_LENGTH);
+            data.baseGs1 = serializedGs1.substring(0, baseGs1Length);
             parsedGs1s.add(data);
+            index += serializedGs1Length;
         }
 
         return parsedGs1s;

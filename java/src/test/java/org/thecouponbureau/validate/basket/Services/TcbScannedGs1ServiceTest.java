@@ -22,6 +22,18 @@ public class TcbScannedGs1ServiceTest {
     }
 
     @Test
+    void parsesMaxLengthConsumerSerializedGs1Locally() {
+        List<TcbScannedGs1Service.SerializedGs1Data> parsed =
+                TcbScannedGs1Service.tryParseConsumerSerializedGs1s(
+                        "8112069988556677440000019133301677522707");
+
+        assertEquals(1, parsed.size());
+        assertEquals("8112069988556677440000019133301677522707", parsed.get(0).gs1);
+        assertEquals("811206998855667744000001", parsed.get(0).baseGs1);
+        assertEquals(null, parsed.get(0).validated);
+    }
+
+    @Test
     void parsesConcatenatedConsumerSerializedGs1sLocally() {
         List<TcbScannedGs1Service.SerializedGs1Data> parsed =
                 TcbScannedGs1Service.tryParseConsumerSerializedGs1s(
@@ -33,6 +45,18 @@ public class TcbScannedGs1ServiceTest {
         assertEquals("811220998845900034", parsed.get(1).baseGs1);
         assertEquals(null, parsed.get(0).validated);
         assertEquals(null, parsed.get(1).validated);
+    }
+
+    @Test
+    void parsesConcatenatedVariableLengthConsumerSerializedGs1sLocally() {
+        List<TcbScannedGs1Service.SerializedGs1Data> parsed =
+                TcbScannedGs1Service.tryParseConsumerSerializedGs1s(
+                        "8112209988459000329165266614604064"
+                                + "8112069988556677440000019133301677522707");
+
+        assertEquals(2, parsed.size());
+        assertEquals("811220998845900032", parsed.get(0).baseGs1);
+        assertEquals("811206998855667744000001", parsed.get(1).baseGs1);
     }
 
     @Test
@@ -78,6 +102,21 @@ public class TcbScannedGs1ServiceTest {
 
         assertEquals(1, batches.size());
         assertEquals(List.of(sixteenDigitCode), batches.get(0));
+    }
+
+    @Test
+    void buildRedeemBatchesIncludesNonSerializedFsiCodes() {
+        List<List<String>> batches = TcbScannedGs1Service.buildRedeemBatches(
+                List.of(
+                        "8112209988459000320001",
+                        "8112209988459000340001"));
+
+        assertEquals(1, batches.size());
+        assertEquals(
+                List.of(
+                        "8112209988459000320001",
+                        "8112209988459000340001"),
+                batches.get(0));
     }
 
     @Test
