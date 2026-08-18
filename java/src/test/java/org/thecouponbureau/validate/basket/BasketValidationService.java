@@ -630,6 +630,12 @@ public class BasketValidationService {
 								BasketValidationInput.class);
 
 				setTcbConfiguration(input);
+				
+				// sync mof
+				//Get the coupons array from input
+				//Get the array of coupons with purchase requirements
+				//Replace 
+				
 
 				ValidationResult result =
 						BasketValidator.validateBasketHelper(input);
@@ -860,6 +866,8 @@ public class BasketValidationService {
 	        }
 	    }
 	}
+	
+	
 
 
 }
