@@ -594,10 +594,11 @@ public class BasketValidationService {
 						TcbMofSyncService.SyncMofResponse mofResponse = TcbMofSyncService.syncMasterOfferFiles(
 								input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, "initial", pageNo);
 
-						System.out.println("nextPageNo = " + mofResponse.nextPageNo);
+						logger.info("Total MOF Records fetched= " + mofResponse.data.size());
+			
 						for (TcbMofSyncService.MasterOfferFileRecord record : mofResponse.data) {
-							System.out.println("base_gs1 = " + record.baseGs1);
-							System.out.println("purchaseRequirementJson = "
+							logger.info("base_gs1 = " + record.baseGs1);
+							logger.info("purchaseRequirementJson = "
 									+ mapper1.writeValueAsString(record.purchaseRequirement));
 						}
 
@@ -612,6 +613,8 @@ public class BasketValidationService {
 							break;
 						}
 						pageNo = String.valueOf(mofResponse.nextPageNo);
+						logger.info("nextPageNo = " + mofResponse.nextPageNo);
+						Thread.sleep(10000);	
 					}
 					sync_mof_data = true;
 				}
