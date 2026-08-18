@@ -33,8 +33,8 @@ public class TcbMofSyncService {
      *
      * <p>Mode behavior:
      * <ul>
-     *   <li>{@code initial}: last 6 months through today</li>
-     *   <li>{@code incremental}: yesterday through today</li>
+     *   <li>{@code initial}: last 6 months through tomorrow</li>
+     *   <li>{@code incremental}: yesterday through tomorrow</li>
      * </ul>
      *
      * <p>The incremental mode assumption is intentionally simple because the
@@ -99,11 +99,11 @@ public class TcbMofSyncService {
 
     static DateRange resolveDateRange(String mode, LocalDate currentDate) {
         if (MODE_INITIAL.equalsIgnoreCase(mode)) {
-            return new DateRange(currentDate.minusMonths(6), currentDate);
+            return new DateRange(currentDate.minusMonths(6), currentDate.plusDays(1));
         }
 
         if (MODE_INCREMENTAL.equalsIgnoreCase(mode)) {
-            return new DateRange(currentDate.minusDays(1), currentDate);
+            return new DateRange(currentDate.minusDays(1), currentDate.plusDays(1));
         }
 
         throw new IllegalArgumentException("mode must be either initial or incremental.");

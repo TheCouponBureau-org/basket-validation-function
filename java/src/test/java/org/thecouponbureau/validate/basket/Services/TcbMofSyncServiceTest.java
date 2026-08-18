@@ -13,25 +13,25 @@ import org.junit.jupiter.api.Test;
 public class TcbMofSyncServiceTest {
 
     @Test
-    void initialModeUsesLastSixMonthsThroughToday() {
+    void initialModeUsesLastSixMonthsThroughTomorrow() {
         TcbMofSyncService.DateRange dateRange =
                 TcbMofSyncService.resolveDateRange(
                         "initial",
-                        LocalDate.of(2026, 8, 17));
+                        LocalDate.of(2026, 8, 18));
 
-        assertEquals(LocalDate.of(2026, 2, 17), dateRange.fromDate);
-        assertEquals(LocalDate.of(2026, 8, 17), dateRange.toDate);
+        assertEquals(LocalDate.of(2026, 2, 18), dateRange.fromDate);
+        assertEquals(LocalDate.of(2026, 8, 19), dateRange.toDate);
     }
 
     @Test
-    void incrementalModeUsesYesterdayThroughToday() {
+    void incrementalModeUsesYesterdayThroughTomorrow() {
         TcbMofSyncService.DateRange dateRange =
                 TcbMofSyncService.resolveDateRange(
                         "incremental",
-                        LocalDate.of(2026, 8, 17));
+                        LocalDate.of(2026, 8, 18));
 
-        assertEquals(LocalDate.of(2026, 8, 16), dateRange.fromDate);
-        assertEquals(LocalDate.of(2026, 8, 17), dateRange.toDate);
+        assertEquals(LocalDate.of(2026, 8, 17), dateRange.fromDate);
+        assertEquals(LocalDate.of(2026, 8, 19), dateRange.toDate);
     }
 
     @Test
