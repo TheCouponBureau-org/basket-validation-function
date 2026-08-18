@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 public class BasketValidationServiceTest {
 
 	
-	//@Test
+	@Test
 	@Tag("localBasketValidation")
 	public void localBasketValidation() throws Exception {
 
@@ -19,7 +19,7 @@ public class BasketValidationServiceTest {
 
 	}
 	
-    //@Test
+    @Test
     @Tag("validateBasket")
     public void validateBasket() throws Exception {
 

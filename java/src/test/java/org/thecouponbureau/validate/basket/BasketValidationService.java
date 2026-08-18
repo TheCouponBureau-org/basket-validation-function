@@ -19,7 +19,9 @@ import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,6 +30,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import org.thecouponbureau.validate.basket.Services.TcbMofSyncService;
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import redis.clients.jedis.Jedis;
 
@@ -611,11 +615,26 @@ public class BasketValidationService {
 					}
 					sync_mof_data = true;
 				}
-				
-				// Get the coupons array from input
-				// Get the array of coupons with purchase requirements
-				// Replace
 
+				/**
+				 * Get the coupons array from input
+				 */
+				List<String> inputCoupons = input.coupons.stream().map(coupon -> coupon.gs1)
+						.filter(gs1 -> gs1 != null && !gs1.isEmpty()).distinct().toList();
+
+				/**
+				 * Get the array of coupons with purchase requirements
+				 */
+				List<InputCoupon> inputCouponsWithPurchaseRequirements = buildCouponsFromLocalDb(input.tcbBaseUrl,
+						input.tcbAccessKey, input.tcbAccessToken, inputCoupons);
+
+				/**
+				 * Replace actual input coupons with input + purchase requirements
+				 */
+				if (inputCouponsWithPurchaseRequirements != null) {
+				    input.coupons = inputCouponsWithPurchaseRequirements;
+				}
+				
 				ValidationResult result = BasketValidator.validateBasketHelper(input);
 				String actualJson = mapper.writerWithDefaultPrettyPrinter()
 						.writeValueAsString(result.basketValidationOutput);
@@ -827,6 +846,38 @@ public class BasketValidationService {
 				}
 			}
 		}
+	}
+
+	private static List<InputCoupon> buildCouponsFromLocalDb(String tcbBaseUrl, String tcbAccessKey, String accessToken,
+			List<String> inputCoupons) throws Exception {
+
+		List<String> scannedCoupons = inputCoupons;
+
+		List<TcbScannedGs1Service.SerializedGs1Data> resolvedCoupons = TcbScannedGs1Service.parseScannedGs1s(tcbBaseUrl,
+				tcbAccessKey, accessToken, scannedCoupons);
+
+		ObjectMapper mapper = new ObjectMapper();
+		List<InputCoupon> coupons = new ArrayList<>();
+
+		try (Jedis jedis = new Jedis("localhost", 6379)) {
+			for (TcbScannedGs1Service.SerializedGs1Data resolvedCoupon : resolvedCoupons) {
+				String purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1);
+
+				if (purchaseRequirementJson == null) {
+					continue;
+				}
+
+				PurchaseRequirement purchaseRequirement = mapper.readValue(purchaseRequirementJson,
+						PurchaseRequirement.class);
+
+				InputCoupon coupon = new InputCoupon();
+				coupon.gs1 = resolvedCoupon.gs1;
+				coupon.purchaseRequirement = purchaseRequirement;
+				coupon.validated = resolvedCoupon.validated;
+				coupons.add(coupon);
+			}
+		}
+		return coupons;
 	}
 
 }
