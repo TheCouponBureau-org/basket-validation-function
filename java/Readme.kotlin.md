@@ -62,6 +62,27 @@ for (record in mofResponse.data) {
 
 Example Redis storage pattern:
 
+> **Optional: Install Redis locally before using the Redis examples**
+>
+> **macOS**
+> 1. `brew install redis`
+> 2. `brew services start redis`
+> 3. Verify with `redis-cli ping`
+>
+> **Linux (Ubuntu/Debian)**
+> 1. `sudo apt update`
+> 2. `sudo apt install redis-server`
+> 3. `sudo systemctl enable redis-server`
+> 4. `sudo systemctl start redis-server`
+> 5. Verify with `redis-cli ping`
+>
+> **Windows**
+> 1. Install Docker Desktop
+> 2. Run `docker run --name redis -p 6379:6379 -d redis`
+> 3. Verify with `docker exec -it redis redis-cli ping`
+>
+> If Redis is not needed in your environment, skip this and use any other local database keyed by `base_gs1`.
+
 ```kotlin
 import com.fasterxml.jackson.databind.ObjectMapper
 import redis.clients.jedis.Jedis
