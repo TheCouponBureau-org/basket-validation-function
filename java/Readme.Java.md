@@ -314,41 +314,33 @@ Response from local DB lookup:
 Request:
 
 ```java
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+import redis.clients.jedis.Jedis;
+
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
 
-Map<String, PurchaseRequirement> purchaseRequirementDb = loadPurchaseRequirementDb();
+List<String> scannedCoupons = List.of(
+        "8112009988459000019133924009755364",
+        "8112009988459000039133772240739897",
+        "8112009988459000049133939957096441",
+        "8112009988459000199133935966961409",
+        "8112209988459000");
 
-List<InputCoupon> coupons = new ArrayList<>();
-for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
-    PurchaseRequirement purchaseRequirement =
-            purchaseRequirementDb.get(item.baseGs1);
-
-    if (purchaseRequirement == null) {
-        continue;
-    }
-
-    InputCoupon coupon = new InputCoupon();
-    coupon.gs1 = item.gs1;
-    coupon.purchaseRequirement = purchaseRequirement;
-    coupons.add(coupon);
-}
-```
-
-If you are using Redis instead of an in-memory map, the loop becomes:
-
-```java
-import com.fasterxml.jackson.databind.ObjectMapper;
-import redis.clients.jedis.Jedis;
+List<TcbScannedGs1Service.SerializedGs1Data> resolved =
+        TcbScannedGs1Service.parseScannedGs1s(
+                "https://api.try.thecouponbureau.org/",
+                "YOUR_ACCESS_KEY",
+                accessToken,
+                scannedCoupons);
 
 ObjectMapper mapper = new ObjectMapper();
 
 List<InputCoupon> coupons = new ArrayList<>();
-
 try (Jedis jedis = new Jedis("localhost", 6379)) {
     for (TcbScannedGs1Service.SerializedGs1Data item : resolved) {
         String purchaseRequirementJson = jedis.get(item.baseGs1);
@@ -368,6 +360,42 @@ try (Jedis jedis = new Jedis("localhost", 6379)) {
         coupon.validated = item.validated;
         coupons.add(coupon);
     }
+}
+```
+
+This sample resolves each scanned value to `gs1` + `base_gs1` using the SDK first, then reads the purchase requirement from Redis using `base_gs1` as the key.
+
+If you want the Redis loading logic as a reusable helper, use:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
+import redis.clients.jedis.Jedis;
+
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
+
+Map<String, PurchaseRequirement> loadPurchaseRequirementDb() throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, PurchaseRequirement> purchaseRequirements = new HashMap<>();
+
+    try (Jedis jedis = new Jedis("localhost", 6379)) {
+        for (String baseGs1 : jedis.keys("*")) {
+            String purchaseRequirementJson = jedis.get(baseGs1);
+
+            if (purchaseRequirementJson == null) {
+                continue;
+            }
+
+            purchaseRequirements.put(
+                    baseGs1,
+                    mapper.readValue(
+                            purchaseRequirementJson,
+                            PurchaseRequirement.class));
+        }
+    }
+
+    return purchaseRequirements;
 }
 ```
 
