@@ -524,11 +524,11 @@ public class BasketValidationService {
 		// logger.info(failedRows);
 	}
 
-	public void validateBasketWithRedis(String excelFile, String sheetName) throws Exception {
+	public void validateBasketWithLocalRedis(String excelFile, String sheetName) throws Exception {
 
 		boolean sync_mof_data = false;
 		logger.info("====================================");
-		logger.info("Executing validateBasket With Redis");
+		logger.info("Executing validateBasket With Loacl Redis");
 		logger.info("====================================");
 
 		ObjectMapper mapper = new ObjectMapper();

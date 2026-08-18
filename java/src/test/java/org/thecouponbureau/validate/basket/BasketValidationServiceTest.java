@@ -31,13 +31,13 @@ public class BasketValidationServiceTest {
     }
     
     @Test
-    @Tag("validateBasketWithRedis")
-    public void validateBasketWithRedis() throws Exception {
+    @Tag("validateBasketWithLocalRedis")
+    public void validateBasketWithLocalRedis() throws Exception {
 
         BasketValidationService runner =
                 new BasketValidationService();
 
-        runner.validateBasketWithRedis(
+        runner.validateBasketWithLocalRedis(
                 "POS_Basket_Validation_UseCases.xlsx", "validateBasket");
     }
     
