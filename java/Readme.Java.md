@@ -794,185 +794,177 @@ Response:
 
 ## Complete Java Example
 
-The following example hardcodes basket data and coupon purchase requirements directly in code and shows the full SDK flow without using any fetch code.
+The following example hardcodes basket data and scanned coupon values, then uses the SDK to resolve `gs1 -> base_gs1` and loads purchase requirements from Redis.
 
 ```java
 01 package demo;
 02 
-03 import java.util.ArrayList;
-04 import java.util.Arrays;
+03 import com.fasterxml.jackson.databind.ObjectMapper;
+04 import java.util.ArrayList;
 05 import java.util.List;
 06 import java.util.Map;
 07 import java.util.stream.Collectors;
-08 
-09 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService;
-10 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService;
-11 import org.thecouponbureau.validate.basket.Services.TcbTokenService;
-12 import org.thecouponbureau.validate.basket.core.BasketValidator;
-13 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
-14 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
-15 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
-16 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
-17 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
-18 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
-19 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
-20 
-21 public class EndToEndBasketValidationExample {
+08 import redis.clients.jedis.Jedis;
+09 
+10 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService;
+11 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService;
+12 import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
+13 import org.thecouponbureau.validate.basket.Services.TcbTokenService;
+14 import org.thecouponbureau.validate.basket.core.BasketValidator;
+15 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
+16 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem;
+17 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput;
+18 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon;
+19 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
+20 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
+21 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
 22 
-23     public static void main(String[] args) throws Exception {
-24         String tcbBaseUrl = "https://api.try.thecouponbureau.org";
-25         String tcbAccessKey = "YOUR_ACCESS_KEY";
-26         String tcbSecretKey = "YOUR_SECRET_KEY";
-27 
-28         String accessToken = TcbTokenService.fetchAccessToken(
-29                 tcbBaseUrl,
-30                 tcbAccessKey,
-31                 tcbSecretKey);
-32 
-33         List<BasketItem> basket = buildBasket();
-34         List<InputCoupon> couponsFromLocalDb = buildCouponsFromLocalDb();
-35 
-36         List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
-37 
-38         for (InputCoupon coupon : couponsFromLocalDb) {
-39             LocalBasketValidationInput localInput = new LocalBasketValidationInput();
-40             localInput.basket = basket;
-41             localInput.coupons = List.of(coupon);
+23 public class EndToEndBasketValidationExample {
+24 
+25     public static void main(String[] args) throws Exception {
+26         String tcbBaseUrl = "https://api.try.thecouponbureau.org";
+27         String tcbAccessKey = "YOUR_ACCESS_KEY";
+28         String tcbSecretKey = "YOUR_SECRET_KEY";
+29 
+30         String accessToken = TcbTokenService.fetchAccessToken(
+31                 tcbBaseUrl,
+32                 tcbAccessKey,
+33                 tcbSecretKey);
+34 
+35         List<BasketItem> basket = buildBasket();
+36         List<InputCoupon> couponsFromLocalDb = buildCouponsFromLocalDb(
+37                 tcbBaseUrl,
+38                 tcbAccessKey,
+39                 accessToken);
+40 
+41         List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
 42 
-43             ValidationResult localResult = BasketValidator.localBasketValidation(localInput);
-44 
-45             if (localResult.error != null) {
-46                 continue;
-47             }
-48 
-49             if (localResult.basketValidationOutput != null
-50                     && localResult.basketValidationOutput.discountInCents > 0) {
-51                 locallyEligibleCoupons.add(coupon);
+43         for (InputCoupon coupon : couponsFromLocalDb) {
+44             LocalBasketValidationInput localInput = new LocalBasketValidationInput();
+45             localInput.basket = basket;
+46             localInput.coupons = List.of(coupon);
+47 
+48             ValidationResult localResult = BasketValidator.localBasketValidation(localInput);
+49 
+50             if (localResult.error != null) {
+51                 continue;
 52             }
-53         }
-54 
-55         BasketValidationInput validateInput = new BasketValidationInput();
-56         validateInput.basket = basket;
-57         validateInput.coupons = locallyEligibleCoupons;
-58         validateInput.tcbBaseUrl = tcbBaseUrl;
-59         validateInput.tcbAccessKey = tcbAccessKey;
-60         validateInput.tcbAccessToken = accessToken;
-61         validateInput.enableLogging = true;
-62 
-63         ValidationResult finalResult =
-64                 BasketValidator.validateBasketHelper(validateInput);
-65 
-66         System.out.println("discount_in_cents = "
-67                 + finalResult.basketValidationOutput.discountInCents);
-68 
-69         for (AppliedCoupon appliedCoupon : finalResult.basketValidationOutput.appliedCoupons) {
-70             System.out.println("coupon_code = " + appliedCoupon.couponCode);
-71             System.out.println("face_value_in_cents = " + appliedCoupon.faceValueInCents);
-72             System.out.println("gtins = " + appliedCoupon.productCodes.get("gtins"));
-73         }
-74 
-75         List<String> appliedCouponGs1s =
-76                 finalResult.basketValidationOutput.appliedCoupons.stream()
-77                         .map(appliedCoupon -> appliedCoupon.couponCode)
-78                         .collect(Collectors.toList());
+53 
+54             if (localResult.basketValidationOutput != null
+55                     && localResult.basketValidationOutput.discountInCents > 0) {
+56                 locallyEligibleCoupons.add(coupon);
+57             }
+58         }
+59 
+60         BasketValidationInput validateInput = new BasketValidationInput();
+61         validateInput.basket = basket;
+62         validateInput.coupons = locallyEligibleCoupons;
+63         validateInput.tcbBaseUrl = tcbBaseUrl;
+64         validateInput.tcbAccessKey = tcbAccessKey;
+65         validateInput.tcbAccessToken = accessToken;
+66         validateInput.enableLogging = true;
+67 
+68         ValidationResult finalResult =
+69                 BasketValidator.validateBasketHelper(validateInput);
+70 
+71         System.out.println("discount_in_cents = "
+72                 + finalResult.basketValidationOutput.discountInCents);
+73 
+74         for (AppliedCoupon appliedCoupon : finalResult.basketValidationOutput.appliedCoupons) {
+75             System.out.println("coupon_code = " + appliedCoupon.couponCode);
+76             System.out.println("face_value_in_cents = " + appliedCoupon.faceValueInCents);
+77             System.out.println("gtins = " + appliedCoupon.productCodes.get("gtins"));
+78         }
 79 
-80         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
-81         // Only after transaction success should retailer redeem the applied coupons in TCB.
-82 
-83         String redeemResponse = TcbCouponRedeemService.redeemCoupons(
-84                 tcbBaseUrl,
-85                 tcbAccessKey,
-86                 accessToken,
-87                 appliedCouponGs1s);
-88 
-89         System.out.println("redeemResponse = " + redeemResponse);
-90 
-91         // If transaction is voided later, roll back those redeemed coupons.
-92         Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-93                 tcbBaseUrl,
-94                 tcbAccessKey,
-95                 accessToken,
-96                 appliedCouponGs1s);
-97 
-98         System.out.println("rollbackResponses = " + rollbackResponses);
-99     }
-100 
-101     private static List<BasketItem> buildBasket() {
-102         List<BasketItem> basket = new ArrayList<>();
-103 
-104         basket.add(basketItem("037000930396", 1.29, 1));
-105         basket.add(basketItem("037000934677", 1.34, 1));
-106         basket.add(basketItem("030772076835", 3.07, 2));
-107         basket.add(basketItem("037000534358", 6.62, 1));
-108         basket.add(basketItem("037000808893", 5.64, 1));
-109 
-110         return basket;
-111     }
-112 
-113     private static List<InputCoupon> buildCouponsFromLocalDb() {
-114         List<InputCoupon> coupons = new ArrayList<>();
-115 
-116         InputCoupon couponOne = new InputCoupon();
-117         couponOne.gs1 = "8112009988459000019133924009755364";
-118         couponOne.purchaseRequirement = purchaseRequirement(
-119                 Arrays.asList("037000930396", "037000934677", "012345678912"),
-120                 Arrays.asList("7106919588011", "8952803493171", "5012345678900"),
-121                 100L,
-122                 2L,
-123                 0,
-124                 0);
-125         coupons.add(couponOne);
-126 
-127         InputCoupon couponTwo = new InputCoupon();
-128         couponTwo.gs1 = "8112009988459000039133772240739897";
-129         couponTwo.purchaseRequirement = purchaseRequirement(
-130                 Arrays.asList("037000761648", "037000925323"),
-131                 Arrays.asList("030772076835", "030772076880"),
-132                 100L,
-133                 2L,
-134                 0,
-135                 0);
-136         coupons.add(couponTwo);
+80         List<String> appliedCouponGs1s =
+81                 finalResult.basketValidationOutput.appliedCoupons.stream()
+82                         .map(appliedCoupon -> appliedCoupon.couponCode)
+83                         .collect(Collectors.toList());
+84 
+85         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
+86         // Only after transaction success should retailer redeem the applied coupons in TCB.
+87 
+88         String redeemResponse = TcbCouponRedeemService.redeemCoupons(
+89                 tcbBaseUrl,
+90                 tcbAccessKey,
+91                 accessToken,
+92                 appliedCouponGs1s);
+93 
+94         System.out.println("redeemResponse = " + redeemResponse);
+95 
+96         // If transaction is voided later, roll back those redeemed coupons.
+97         Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+98                 tcbBaseUrl,
+99                 tcbAccessKey,
+100                 accessToken,
+101                 appliedCouponGs1s);
+102 
+103         System.out.println("rollbackResponses = " + rollbackResponses);
+104     }
+105 
+106     private static List<BasketItem> buildBasket() {
+107         List<BasketItem> basket = new ArrayList<>();
+108 
+109         basket.add(basketItem("037000930396", 1.29, 1));
+110         basket.add(basketItem("037000934677", 1.34, 1));
+111         basket.add(basketItem("030772076835", 3.07, 2));
+112         basket.add(basketItem("037000534358", 6.62, 1));
+113         basket.add(basketItem("037000808893", 5.64, 1));
+114 
+115         return basket;
+116     }
+117 
+118     private static List<InputCoupon> buildCouponsFromLocalDb(
+119             String tcbBaseUrl,
+120             String tcbAccessKey,
+121             String accessToken) throws Exception {
+122 
+123         List<String> scannedCoupons = List.of(
+124                 "8112009988459000019133924009755364",
+125                 "8112009988459000039133772240739897",
+126                 "8112009988459000049133939957096441");
+127 
+128         List<TcbScannedGs1Service.SerializedGs1Data> resolvedCoupons =
+129                 TcbScannedGs1Service.parseScannedGs1s(
+130                         tcbBaseUrl,
+131                         tcbAccessKey,
+132                         accessToken,
+133                         scannedCoupons);
+134 
+135         ObjectMapper mapper = new ObjectMapper();
+136         List<InputCoupon> coupons = new ArrayList<>();
 137 
-138         InputCoupon couponThree = new InputCoupon();
-139         couponThree.gs1 = "8112009988459000049133939957096441";
-140         couponThree.purchaseRequirement = purchaseRequirement(
-141                 Arrays.asList("037000523550", "037000758365"),
-142                 Arrays.asList("030772118054", "030772118092"),
-143                 100L,
-144                 2L,
-145                 0,
-146                 0);
-147         coupons.add(couponThree);
-148 
-149         return coupons;
-150     }
-151 
-152     private static PurchaseRequirement purchaseRequirement(
-153             List<String> primaryPurchaseGtins,
-154             List<String> primaryPurchaseEans,
-155             Long primaryPurchaseSaveValue,
-156             Long primaryPurchaseRequirements,
-157             Integer primaryPurchaseReqCode,
-158             Integer saveValueCode) {
-159 
-160         PurchaseRequirement purchaseRequirement = new PurchaseRequirement();
-161         purchaseRequirement.primaryPurchaseGtins = primaryPurchaseGtins;
-162         purchaseRequirement.primaryPurchaseEans = primaryPurchaseEans;
-163         purchaseRequirement.primaryPurchaseSaveValue = primaryPurchaseSaveValue;
-164         purchaseRequirement.primaryPurchaseRequirements = primaryPurchaseRequirements;
-165         purchaseRequirement.primaryPurchaseReqCode = primaryPurchaseReqCode;
-166         purchaseRequirement.saveValueCode = saveValueCode;
-167         return purchaseRequirement;
-168     }
-169 
-170     private static BasketItem basketItem(String productCode, double price, int quantity) {
-171         BasketItem item = new BasketItem();
-172         item.productCode = productCode;
-173         item.price = price;
-174         item.quantity = quantity;
-175         item.unit = "item";
-176         return item;
-177     }
-178 }
+138         try (Jedis jedis = new Jedis("localhost", 6379)) {
+139             for (TcbScannedGs1Service.SerializedGs1Data resolvedCoupon : resolvedCoupons) {
+140                 String purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1);
+141 
+142                 if (purchaseRequirementJson == null) {
+143                     continue;
+144                 }
+145 
+146                 PurchaseRequirement purchaseRequirement =
+147                         mapper.readValue(
+148                                 purchaseRequirementJson,
+149                                 PurchaseRequirement.class);
+150 
+151                 InputCoupon coupon = new InputCoupon();
+152                 coupon.gs1 = resolvedCoupon.gs1;
+153                 coupon.purchaseRequirement = purchaseRequirement;
+154                 coupon.validated = resolvedCoupon.validated;
+155                 coupons.add(coupon);
+156             }
+157         }
+158 
+159         return coupons;
+160     }
+161 
+162     private static BasketItem basketItem(String productCode, double price, int quantity) {
+163         BasketItem item = new BasketItem();
+164         item.productCode = productCode;
+165         item.price = price;
+166         item.quantity = quantity;
+167         item.unit = "item";
+168         return item;
+169     }
+170 }
 ```
