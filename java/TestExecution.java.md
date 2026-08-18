@@ -71,7 +71,7 @@ mvn clean test
 ## Run Local Basket Validation Tests
 
 ```bash
-mvn clean test -Dtags=localBasketValidation
+mvn clean test -Dgroups=localBasketValidation
 ```
 
 ---
@@ -79,7 +79,7 @@ mvn clean test -Dtags=localBasketValidation
 ## Run Basket Validation Tests
 
 ```bash
-mvn clean test -Dtags=validateBasket
+mvn clean test -Dgroups=validateBasket
 ```
 
 ---
@@ -87,7 +87,7 @@ mvn clean test -Dtags=validateBasket
 ## Run Single JSON Validation
 
 ```bash
-mvn clean test -Dtags=single-json
+mvn clean test -Dgroups=single-json
 ```
 
 ---
