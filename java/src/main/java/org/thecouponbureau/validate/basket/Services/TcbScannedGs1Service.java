@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -41,9 +43,15 @@ public class TcbScannedGs1Service {
 
         validateInputs(baseUrl, accessKey, accessToken, scannedGs1s);
 
-        List<SerializedGs1Data> resolvedGs1s = new ArrayList<>();
-        List<List<String>> chunks = buildRedeemBatches(scannedGs1s);
-        for (String scannedGs1 : scannedGs1s) {
+        List<List<SerializedGs1Data>> resolvedByInputIndex = new ArrayList<>();
+        for (int index = 0; index < scannedGs1s.size(); index++) {
+            resolvedByInputIndex.add(new ArrayList<>());
+        }
+
+        List<PendingRedeemInput> redeemInputs = new ArrayList<>();
+
+        for (int index = 0; index < scannedGs1s.size(); index++) {
+            String scannedGs1 = scannedGs1s.get(index);
             if (isBlank(scannedGs1)) {
                 continue;
             }
@@ -52,53 +60,64 @@ public class TcbScannedGs1Service {
             List<SerializedGs1Data> locallyParsed = tryParseConsumerSerializedGs1s(normalizedGs1);
 
             if (!locallyParsed.isEmpty()) {
-                resolvedGs1s.addAll(locallyParsed);
+                resolvedByInputIndex.get(index).addAll(locallyParsed);
+                continue;
             }
+
+            redeemInputs.add(new PendingRedeemInput(index, normalizedGs1));
         }
+
+        List<RedeemChunk> chunks = buildRedeemBatches(redeemInputs);
 
         if (chunks.isEmpty()) {
-            return resolvedGs1s;
+            return flattenResolvedGs1s(resolvedByInputIndex);
         }
 
-        List<CompletableFuture<List<SerializedGs1Data>>> futures = new ArrayList<>();
+        List<CompletableFuture<Map<Integer, List<SerializedGs1Data>>>> futures = new ArrayList<>();
 
-        for (List<String> chunk : chunks) {
+        for (RedeemChunk chunk : chunks) {
             futures.add(resolveChunkAsync(baseUrl, accessKey, accessToken, chunk));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        for (CompletableFuture<List<SerializedGs1Data>> future : futures) {
-            resolvedGs1s.addAll(future.join());
+        for (CompletableFuture<Map<Integer, List<SerializedGs1Data>>> future : futures) {
+            Map<Integer, List<SerializedGs1Data>> resolvedChunk = future.join();
+            for (Map.Entry<Integer, List<SerializedGs1Data>> entry : resolvedChunk.entrySet()) {
+                resolvedByInputIndex.get(entry.getKey()).addAll(entry.getValue());
+            }
         }
 
-        return resolvedGs1s;
+        return flattenResolvedGs1s(resolvedByInputIndex);
     }
 
-    static List<List<String>> buildRedeemBatches(List<String> scannedGs1s) {
-        List<List<String>> batches = new ArrayList<>();
-        List<String> groupedRedeemCodes = new ArrayList<>();
+    static List<RedeemChunk> buildRedeemBatches(List<PendingRedeemInput> redeemInputs) {
+        List<RedeemChunk> batches = new ArrayList<>();
+        List<PendingRedeemInput> groupedRedeemCodes = new ArrayList<>();
 
-        for (String scannedGs1 : scannedGs1s) {
-            if (isBlank(scannedGs1)) {
+        for (PendingRedeemInput redeemInput : redeemInputs) {
+            if (redeemInput == null || isBlank(redeemInput.gs1)) {
                 continue;
             }
 
-            String normalizedGs1 = scannedGs1.trim();
+            String normalizedGs1 = redeemInput.gs1.trim();
 
             if (!tryParseConsumerSerializedGs1s(normalizedGs1).isEmpty()) {
                 continue;
             }
 
             if (normalizedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
-                batches.add(List.of(normalizedGs1));
+                batches.add(new RedeemChunk(List.of(redeemInput)));
                 continue;
             }
 
-            groupedRedeemCodes.add(normalizedGs1);
+            groupedRedeemCodes.add(redeemInput);
         }
 
-        batches.addAll(chunkGs1s(groupedRedeemCodes, REDEEM_CHUNK_SIZE));
+        for (int index = 0; index < groupedRedeemCodes.size(); index += REDEEM_CHUNK_SIZE) {
+            int endIndex = Math.min(index + REDEEM_CHUNK_SIZE, groupedRedeemCodes.size());
+            batches.add(new RedeemChunk(new ArrayList<>(groupedRedeemCodes.subList(index, endIndex))));
+        }
 
         return batches;
     }
@@ -209,18 +228,32 @@ public class TcbScannedGs1Service {
         }
     }
 
-    private static CompletableFuture<List<SerializedGs1Data>> resolveChunkAsync(
+    private static List<SerializedGs1Data> flattenResolvedGs1s(
+            List<List<SerializedGs1Data>> resolvedByInputIndex) {
+        List<SerializedGs1Data> flattened = new ArrayList<>();
+
+        for (List<SerializedGs1Data> resolvedItems : resolvedByInputIndex) {
+            if (resolvedItems == null || resolvedItems.isEmpty()) {
+                continue;
+            }
+            flattened.addAll(resolvedItems);
+        }
+
+        return flattened;
+    }
+
+    private static CompletableFuture<Map<Integer, List<SerializedGs1Data>>> resolveChunkAsync(
             String baseUrl,
             String accessKey,
             String accessToken,
-            List<String> scannedGs1s) {
-
-        List<String> chunk = new ArrayList<>(scannedGs1s);
+            RedeemChunk redeemChunk) {
 
         return CompletableFuture.supplyAsync(() -> {
                     try {
                         RedeemRequest payload = new RedeemRequest();
-                        payload.gs1s = chunk;
+                        for (PendingRedeemInput redeemInput : redeemChunk.inputs) {
+                            payload.gs1s.add(redeemInput.gs1);
+                        }
 
                         HttpRequest request = TcbApiService.buildPostJsonRequest(
                                 normalizeBaseUrl(baseUrl) + "/retailer/redeem",
@@ -231,7 +264,7 @@ public class TcbScannedGs1Service {
                         HttpResponse<String> response =
                                 TcbApiService.sendWithRetry(request, "retailer/redeem");
 
-                        return extractResolvedGs1s(response.body());
+                        return extractResolvedGs1sByInput(response.body(), redeemChunk.inputs);
                     } catch (IOException exception) {
                         throw new IllegalStateException(
                                 "Unable to resolve scanned gs1s through TCB retailer/redeem.",
@@ -244,6 +277,88 @@ public class TcbScannedGs1Service {
                                     "Unable to resolve scanned gs1 chunk through TCB retailer/redeem.",
                                     exception));
                 });
+    }
+
+    static Map<Integer, List<SerializedGs1Data>> extractResolvedGs1sByInput(
+            String redeemResponseBody,
+            List<PendingRedeemInput> redeemInputs) {
+        try {
+            RedeemResponse redeemResponse =
+                    MAPPER.readValue(redeemResponseBody, RedeemResponse.class);
+
+            Map<Integer, List<SerializedGs1Data>> resolvedByInput = new HashMap<>();
+            if (redeemResponse.newlyRedeemed == null || redeemInputs == null || redeemInputs.isEmpty()) {
+                return resolvedByInput;
+            }
+
+            for (PendingRedeemInput redeemInput : redeemInputs) {
+                List<SerializedGs1Data> matchedGs1s =
+                        findMatchingResolvedGs1s(redeemInput.gs1, redeemResponse.newlyRedeemed);
+
+                if (matchedGs1s.isEmpty()) {
+                    continue;
+                }
+
+                resolvedByInput.put(redeemInput.inputIndex, matchedGs1s);
+            }
+
+            return resolvedByInput;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to parse TCB redeem response.", exception);
+        }
+    }
+
+    static List<SerializedGs1Data> findMatchingResolvedGs1s(
+            String requestedGs1,
+            List<RedeemedCoupon> newlyRedeemed) {
+        List<SerializedGs1Data> matches = new ArrayList<>();
+
+        if (isBlank(requestedGs1) || newlyRedeemed == null || newlyRedeemed.isEmpty()) {
+            return matches;
+        }
+
+        for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
+            if (redeemedCoupon == null
+                    || isBlank(redeemedCoupon.gs1)
+                    || isBlank(redeemedCoupon.masterOfferFile)) {
+                continue;
+            }
+
+            if (requestedGs1.equals(redeemedCoupon.gs1)) {
+                SerializedGs1Data data = new SerializedGs1Data();
+                data.gs1 = redeemedCoupon.gs1;
+                data.baseGs1 = redeemedCoupon.masterOfferFile;
+                data.validated = true;
+                matches.add(data);
+            }
+        }
+
+        if (!matches.isEmpty()) {
+            return matches;
+        }
+
+        String requestedBaseGs1 = stripLastFourDigits(requestedGs1);
+        if (isBlank(requestedBaseGs1)) {
+            return matches;
+        }
+
+        for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
+            if (redeemedCoupon == null
+                    || isBlank(redeemedCoupon.gs1)
+                    || isBlank(redeemedCoupon.masterOfferFile)) {
+                continue;
+            }
+
+            if (requestedBaseGs1.equals(redeemedCoupon.masterOfferFile)) {
+                SerializedGs1Data data = new SerializedGs1Data();
+                data.gs1 = redeemedCoupon.gs1;
+                data.baseGs1 = redeemedCoupon.masterOfferFile;
+                data.validated = true;
+                matches.add(data);
+            }
+        }
+
+        return matches;
     }
 
     private static void validateInputs(
@@ -284,6 +399,14 @@ public class TcbScannedGs1Service {
         return value == null || value.trim().isEmpty();
     }
 
+    private static String stripLastFourDigits(String gs1) {
+        if (isBlank(gs1) || gs1.length() <= 4) {
+            return null;
+        }
+
+        return gs1.substring(0, gs1.length() - 4);
+    }
+
     public static class SerializedGs1Data {
         public String gs1;
         @JsonProperty("base_gs1")
@@ -313,5 +436,23 @@ public class TcbScannedGs1Service {
         public String gs1;
         @JsonProperty("master_offer_file")
         public String masterOfferFile;
+    }
+
+    static class PendingRedeemInput {
+        final int inputIndex;
+        final String gs1;
+
+        PendingRedeemInput(int inputIndex, String gs1) {
+            this.inputIndex = inputIndex;
+            this.gs1 = gs1;
+        }
+    }
+
+    static class RedeemChunk {
+        final List<PendingRedeemInput> inputs;
+
+        RedeemChunk(List<PendingRedeemInput> inputs) {
+            this.inputs = inputs;
+        }
     }
 }
