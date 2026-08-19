@@ -4,8 +4,10 @@ import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -629,8 +631,12 @@ public class BasketValidationService {
 				/**
 				 * Get the coupons array from input
 				 */
-				List<String> inputCoupons = input.coupons.stream().map(coupon -> coupon.gs1)
-						.filter(gs1 -> gs1 != null && !gs1.isEmpty()).distinct().toList();
+				Set<String> seen = new HashSet<>();
+				List<String> inputCoupons = input.coupons.stream()
+				        .map(coupon -> coupon.gs1)
+				        .filter(gs1 -> gs1 != null && !gs1.isEmpty())
+				        .filter(gs1 -> gs1.startsWith("81122") || seen.add(gs1))
+				        .toList();
 
 				/**
 				 * Get the array of coupons with purchase requirements
