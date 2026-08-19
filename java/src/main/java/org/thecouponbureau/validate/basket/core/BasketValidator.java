@@ -1,6 +1,7 @@
 package org.thecouponbureau.validate.basket.core;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -338,12 +339,15 @@ public class BasketValidator {
             return coupons;
         }
 
-        for (InputCoupon inputCoupon : inputCoupons) {
+        for (int index = 0; index < inputCoupons.size(); index++) {
+            InputCoupon inputCoupon = inputCoupons.get(index);
             Coupon coupon = new Coupon();
             if (inputCoupon != null) {
                 coupon.gs1 = inputCoupon.gs1;
                 coupon.purchaseRequirement = inputCoupon.purchaseRequirement;
                 coupon.validated = inputCoupon.validated;
+                coupon.internalOriginalIndex = index;
+                coupon.internalResolvedSequence = 0;
             }
             coupons.add(coupon);
         }
@@ -510,7 +514,26 @@ public class BasketValidator {
                     enableLogging));
         }
 
+        sortCouponsByOriginalOrder(validatedCoupons);
         return validatedCoupons;
+    }
+
+    static void sortCouponsByOriginalOrder(List<Coupon> coupons) {
+        if (coupons == null || coupons.isEmpty()) {
+            return;
+        }
+
+        coupons.sort(
+                Comparator.comparingInt(
+                                (Coupon coupon) ->
+                                        coupon == null || coupon.internalOriginalIndex == null
+                                                ? Integer.MAX_VALUE
+                                                : coupon.internalOriginalIndex)
+                        .thenComparingInt(
+                                coupon ->
+                                        coupon == null || coupon.internalResolvedSequence == null
+                                                ? Integer.MAX_VALUE
+                                                : coupon.internalResolvedSequence));
     }
 
     private static Map<String, Object> buildCouponIndexDetails(int index) {

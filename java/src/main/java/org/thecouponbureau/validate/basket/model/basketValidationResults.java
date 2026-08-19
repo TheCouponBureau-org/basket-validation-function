@@ -207,6 +207,10 @@ public class basketValidationResults {
         public String baseGs1;                  // Base reference
         public PurchaseRequirement purchaseRequirement; // Rules
         public Boolean validated;
+        @JsonIgnore
+        public Integer internalOriginalIndex;
+        @JsonIgnore
+        public Integer internalResolvedSequence;
     }
 
     /**

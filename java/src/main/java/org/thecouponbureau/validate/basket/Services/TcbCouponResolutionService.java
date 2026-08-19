@@ -132,6 +132,7 @@ public class TcbCouponResolutionService {
                             .thenComparingInt(item -> item.sequence));
 
             for (ResolvedCouponItem item : resolvedItems) {
+                item.coupon.internalResolvedSequence = item.sequence;
                 flattenedCoupons.add(item.coupon);
             }
         }
@@ -368,6 +369,10 @@ public class TcbCouponResolutionService {
         resolvedCoupon.baseGs1 = redeemedCoupon.masterOfferFile;
         resolvedCoupon.purchaseRequirement = purchaseRequirement;
         resolvedCoupon.validated = true;
+        if (originalCoupon != null) {
+            resolvedCoupon.internalOriginalIndex = originalCoupon.internalOriginalIndex;
+            resolvedCoupon.internalResolvedSequence = originalCoupon.internalResolvedSequence;
+        }
         return resolvedCoupon;
     }
 
