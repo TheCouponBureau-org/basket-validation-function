@@ -29,6 +29,30 @@ mvn -version
 
 ---
 
+
+
+> Install Redis locally before running the Redis Tests**
+>
+> **macOS**
+> 1. `brew install redis`
+> 2. `brew services start redis`
+> 3. Verify with `redis-cli ping`
+>
+> **Linux (Ubuntu/Debian)**
+> 1. `sudo apt update`
+> 2. `sudo apt install redis-server`
+> 3. `sudo systemctl enable redis-server`
+> 4. `sudo systemctl start redis-server`
+> 5. Verify with `redis-cli ping`
+>
+> **Windows**
+> 1. Install Docker Desktop
+> 2. Run `docker run --name redis -p 6379:6379 -d redis`
+> 3. Verify with `docker exec -it redis redis-cli ping`
+>
+
+---
+
 # Building the Project
 
 Clean and build the project:
@@ -80,6 +104,14 @@ mvn clean test -Dgroups=localBasketValidation
 
 ```bash
 mvn clean test -Dgroups=validateBasket
+```
+
+---
+
+## Run Basket Validation Tests With Local Redis DB
+
+```bash
+mvn clean test -Dgroups=validateBasketWithLocalRedis
 ```
 
 ---
