@@ -92,7 +92,7 @@ mvn clean test
 
 ---
 
-## Run Local Basket Validation Tests
+## Run Basket Validation Tests with purchase requirements
 
 ```bash
 mvn clean test -Dgroups=localBasketValidation
@@ -100,7 +100,7 @@ mvn clean test -Dgroups=localBasketValidation
 
 ---
 
-## Run Basket Validation Tests
+## Run Basket Validation Tests without purchase requirements
 
 ```bash
 mvn clean test -Dgroups=validateBasket
@@ -108,7 +108,7 @@ mvn clean test -Dgroups=validateBasket
 
 ---
 
-## Run Basket Validation Tests With Local Redis DB
+## Run Basket Validation Tests without purchase requirements & Local Redis DB
 
 ```bash
 mvn clean test -Dgroups=validateBasketWithLocalRedis
