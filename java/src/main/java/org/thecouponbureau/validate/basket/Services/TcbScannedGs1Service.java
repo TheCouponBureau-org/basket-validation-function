@@ -180,6 +180,7 @@ public class TcbScannedGs1Service {
             SerializedGs1Data data = new SerializedGs1Data();
             data.gs1 = serializedGs1;
             data.baseGs1 = serializedGs1.substring(0, baseGs1Length);
+            data.validated = false;
             parsedGs1s.add(data);
             index += serializedGs1Length;
         }
@@ -218,7 +219,7 @@ public class TcbScannedGs1Service {
                 SerializedGs1Data data = new SerializedGs1Data();
                 data.gs1 = redeemedCoupon.gs1;
                 data.baseGs1 = redeemedCoupon.masterOfferFile;
-                data.validated = false;
+                data.validated = true;
                 resolvedGs1s.add(data);
             }
 
@@ -328,7 +329,7 @@ public class TcbScannedGs1Service {
                 SerializedGs1Data data = new SerializedGs1Data();
                 data.gs1 = redeemedCoupon.gs1;
                 data.baseGs1 = redeemedCoupon.masterOfferFile;
-                data.validated = false;
+                data.validated = true;
                 matches.add(data);
             }
 
@@ -346,7 +347,7 @@ public class TcbScannedGs1Service {
                 SerializedGs1Data data = new SerializedGs1Data();
                 data.gs1 = redeemedCoupon.gs1;
                 data.baseGs1 = redeemedCoupon.masterOfferFile;
-                data.validated = false;
+                data.validated = true;
                 matches.add(data);
             }
         }
@@ -371,7 +372,7 @@ public class TcbScannedGs1Service {
                 SerializedGs1Data data = new SerializedGs1Data();
                 data.gs1 = redeemedCoupon.gs1;
                 data.baseGs1 = redeemedCoupon.masterOfferFile;
-                data.validated = false;
+                data.validated = true;
                 matches.add(data);
             }
         }
