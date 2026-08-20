@@ -174,6 +174,27 @@ public class TcbScannedGs1ServiceTest {
     }
 
     @Test
+    void extractResolvedGs1sByInputReturnsAllCouponsForSingle16DigitFetchCode() {
+        String redeemResponse = "{"
+                + "\"status\":\"success\","
+                + "\"newly_redeemed\":["
+                + "{\"gs1\":\"8112209988459000329165266614604064\",\"master_offer_file\":\"811220998845900032\"},"
+                + "{\"gs1\":\"8112209988459000349165768322093822\",\"master_offer_file\":\"811220998845900034\"}"
+                + "]"
+                + "}";
+
+        java.util.Map<Integer, List<TcbScannedGs1Service.SerializedGs1Data>> resolvedFromTcb =
+                TcbScannedGs1Service.extractResolvedGs1sByInput(
+                        redeemResponse,
+                        List.of(new TcbScannedGs1Service.PendingRedeemInput(0, "1234567890123456")));
+
+        assertEquals(1, resolvedFromTcb.size());
+        assertEquals(2, resolvedFromTcb.get(0).size());
+        assertEquals("8112209988459000329165266614604064", resolvedFromTcb.get(0).get(0).gs1);
+        assertEquals("8112209988459000349165768322093822", resolvedFromTcb.get(0).get(1).gs1);
+    }
+
+    @Test
     void returnsOnlyNewlyRedeemedCouponsFromRedeemResponse() {
         String redeemResponse = "{"
                 + "\"status\":\"success\","

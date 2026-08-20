@@ -317,6 +317,24 @@ public class TcbScannedGs1Service {
             return matches;
         }
 
+        if (requestedGs1.length() == SINGLE_REDEEM_CODE_LENGTH) {
+            for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
+                if (redeemedCoupon == null
+                        || isBlank(redeemedCoupon.gs1)
+                        || isBlank(redeemedCoupon.masterOfferFile)) {
+                    continue;
+                }
+
+                SerializedGs1Data data = new SerializedGs1Data();
+                data.gs1 = redeemedCoupon.gs1;
+                data.baseGs1 = redeemedCoupon.masterOfferFile;
+                data.validated = true;
+                matches.add(data);
+            }
+
+            return matches;
+        }
+
         for (RedeemedCoupon redeemedCoupon : newlyRedeemed) {
             if (redeemedCoupon == null
                     || isBlank(redeemedCoupon.gs1)
