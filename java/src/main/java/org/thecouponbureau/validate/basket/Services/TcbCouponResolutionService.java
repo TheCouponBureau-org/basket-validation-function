@@ -13,6 +13,7 @@ import java.util.concurrent.CompletionException;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
@@ -32,13 +33,24 @@ public class TcbCouponResolutionService {
             String accessToken,
             List<Coupon> coupons,
             boolean enableLogging) {
+        return resolveCoupons(baseUrl, accessKey, accessToken, coupons, enableLogging, null, null);
+    }
+
+    public static List<Coupon> resolveCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<Coupon> coupons,
+            boolean enableLogging,
+            String mode,
+            String retailerEmailDomain) {
         return processCoupons(
                 baseUrl,
                 accessKey,
                 accessToken,
                 coupons,
                 enableLogging,
-                true);
+                true, mode, retailerEmailDomain);
     }
 
     public static List<Coupon> validateCoupons(
@@ -47,13 +59,24 @@ public class TcbCouponResolutionService {
             String accessToken,
             List<Coupon> coupons,
             boolean enableLogging) {
+        return validateCoupons(baseUrl, accessKey, accessToken, coupons, enableLogging, null, null);
+    }
+
+    public static List<Coupon> validateCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<Coupon> coupons,
+            boolean enableLogging,
+            String mode,
+            String retailerEmailDomain) {
         return processCoupons(
                 baseUrl,
                 accessKey,
                 accessToken,
                 coupons,
                 enableLogging,
-                false);
+                false, mode, retailerEmailDomain);
     }
 
     private static List<Coupon> processCoupons(
@@ -62,11 +85,16 @@ public class TcbCouponResolutionService {
             String accessToken,
             List<Coupon> coupons,
             boolean enableLogging,
-            boolean includePurchaseRequirements) {
+            boolean includePurchaseRequirements,
+            String mode,
+            String retailerEmailDomain) {
 
         if (coupons == null || coupons.isEmpty()) {
             return coupons;
         }
+
+        String requestMode = TcbMode.normalize(mode);
+        String emailDomain = TcbMode.retailerEmailDomain(requestMode, retailerEmailDomain);
 
         Map<Integer, List<ResolvedCouponItem>> resolvedCouponsByOriginalIndex = new HashMap<>();
         Map<Integer, Boolean> attemptedResolutionByOriginalIndex = new HashMap<>();
@@ -91,7 +119,7 @@ public class TcbCouponResolutionService {
                     accessToken,
                     bucket,
                     enableLogging,
-                    includePurchaseRequirements));
+                    includePurchaseRequirements, requestMode, emailDomain));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -210,10 +238,13 @@ public class TcbCouponResolutionService {
             String accessToken,
             CouponBucket bucket,
             boolean enableLogging,
-            boolean includePurchaseRequirements) {
+            boolean includePurchaseRequirements,
+            String mode,
+            String retailerEmailDomain) {
 
         try {
             RedeemRequest payload = new RedeemRequest();
+            payload.retailerEmailDomain = retailerEmailDomain;
             payload.noPurchaseRequirement = includePurchaseRequirements ? "" : "yes";
 
             if (bucket.singleCouponBucket) {
@@ -225,7 +256,7 @@ public class TcbCouponResolutionService {
             }
 
             HttpRequest request = TcbApiService.buildPostJsonRequest(
-                    normalizeBaseUrl(baseUrl) + "/retailer/redeem",
+                    normalizeBaseUrl(baseUrl) + "/" + mode + "/redeem",
                     accessKey,
                     accessToken,
                     MAPPER.writeValueAsString(payload));
@@ -233,7 +264,7 @@ public class TcbCouponResolutionService {
             logRedeemRequest(request.uri().toString(), payload, bucket, enableLogging);
 
             return CompletableFuture.supplyAsync(() ->
-                    TcbApiService.sendWithRetry(request, "retailer/redeem"))
+                    TcbApiService.sendWithRetry(request, mode + "/redeem"))
                     .thenApply(response -> parseResolutionResponse(
                             response,
                             bucket,
@@ -647,6 +678,9 @@ public class TcbCouponResolutionService {
     }
 
     private static class RedeemRequest {
+        @JsonProperty("retailer_email_domain")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String retailerEmailDomain;
         public List<String> gs1s = new ArrayList<>();
         @JsonProperty("pre_process")
         public String preProcess = "yes";

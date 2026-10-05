@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -26,14 +27,26 @@ public class TcbCouponRedeemService {
             String accessKey,
             String accessToken,
             List<String> gs1s) {
+        return redeemCoupons(baseUrl, accessKey, accessToken, gs1s, null, null);
+    }
+
+    public static String redeemCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<String> gs1s,
+            String mode,
+            String retailerEmailDomain) {
 
         validateInputs(baseUrl, accessKey, accessToken, gs1s);
+        String requestMode = TcbMode.normalize(mode);
+        String emailDomain = TcbMode.retailerEmailDomain(requestMode, retailerEmailDomain);
 
         List<List<String>> chunks = chunkGs1s(gs1s, REDEEM_CHUNK_SIZE);
         List<CompletableFuture<String>> futures = new ArrayList<>();
 
         for (List<String> chunk : chunks) {
-            futures.add(redeemChunkAsync(baseUrl, accessKey, accessToken, chunk));
+            futures.add(redeemChunkAsync(baseUrl, accessKey, accessToken, chunk, requestMode, emailDomain));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -183,7 +196,9 @@ public class TcbCouponRedeemService {
             String baseUrl,
             String accessKey,
             String accessToken,
-            List<String> gs1s) {
+            List<String> gs1s,
+            String mode,
+            String retailerEmailDomain) {
 
         List<String> chunk = new ArrayList<>(gs1s);
         String clientTxnId = UUID.randomUUID().toString();
@@ -191,30 +206,31 @@ public class TcbCouponRedeemService {
         return CompletableFuture.supplyAsync(() -> {
                     try {
                         RedeemRequest payload = new RedeemRequest();
+                        payload.retailerEmailDomain = retailerEmailDomain;
                         payload.gs1s = chunk;
                         payload.clientTxnId = clientTxnId;
 
                         HttpRequest request = TcbApiService.buildPostJsonRequest(
-                                normalizeBaseUrl(baseUrl) + "/retailer/redeem",
+                                normalizeBaseUrl(baseUrl) + "/" + mode + "/redeem",
                                 accessKey,
                                 accessToken,
                                 MAPPER.writeValueAsString(payload));
 
                         HttpResponse<String> response =
-                                TcbApiService.sendWithRetry(request, "retailer/redeem");
+                                TcbApiService.sendWithRetry(request, mode + "/redeem");
 
                         return response.body();
 
                     } catch (IOException exception) {
                         throw new IllegalStateException(
-                                "Unable to redeem coupons through TCB retailer/redeem.",
+                                "Unable to redeem coupons through TCB " + mode + "/redeem.",
                                 exception);
                     }
                 })
                 .exceptionally(exception -> {
                     throw new CompletionException(
                             new IllegalStateException(
-                                    "Unable to redeem coupon chunk through TCB retailer/redeem.",
+                                    "Unable to redeem coupon chunk through TCB " + mode + "/redeem.",
                                     exception));
                 });
     }
@@ -248,6 +264,9 @@ public class TcbCouponRedeemService {
     }
 
     private static class RedeemRequest {
+        @JsonProperty("retailer_email_domain")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String retailerEmailDomain;
         public List<String> gs1s = new ArrayList<>();
         @JsonProperty("include_check_digit")
         public String includeCheckDigit = "yes";

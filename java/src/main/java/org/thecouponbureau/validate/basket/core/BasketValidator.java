@@ -502,7 +502,7 @@ public class BasketValidator {
                     input.tcbAccessKey,
                     input.tcbAccessToken,
                     couponsNeedingValidationOnly,
-                    enableLogging));
+                    enableLogging, input.mode, input.retailerEmailDomain));
         }
 
         if (!couponsNeedingFullResolution.isEmpty()) {
@@ -511,7 +511,7 @@ public class BasketValidator {
                     input.tcbAccessKey,
                     input.tcbAccessToken,
                     couponsNeedingFullResolution,
-                    enableLogging));
+                    enableLogging, input.mode, input.retailerEmailDomain));
         }
 
         sortCouponsByOriginalOrder(validatedCoupons);

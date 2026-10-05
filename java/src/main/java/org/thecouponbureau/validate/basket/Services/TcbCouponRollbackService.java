@@ -19,13 +19,23 @@ public class TcbCouponRollbackService {
             String accessKey,
             String accessToken,
             List<String> gs1s) {
+        return rollbackCoupons(baseUrl, accessKey, accessToken, gs1s, null);
+    }
+
+    public static Map<String, String> rollbackCoupons(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<String> gs1s,
+            String mode) {
 
         validateInputs(baseUrl, accessKey, accessToken, gs1s);
+        String requestMode = TcbMode.normalize(mode);
 
         List<CompletableFuture<Map.Entry<String, String>>> futures = new ArrayList<>();
 
         for (String gs1 : gs1s) {
-            futures.add(rollbackCouponAsync(baseUrl, accessKey, accessToken, gs1));
+            futures.add(rollbackCouponAsync(baseUrl, accessKey, accessToken, gs1, requestMode));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -44,7 +54,8 @@ public class TcbCouponRollbackService {
             String baseUrl,
             String accessKey,
             String accessToken,
-            String gs1) {
+            String gs1,
+            String mode) {
 
         if (isBlank(gs1)) {
             throw new IllegalArgumentException("GS1 cannot be blank for rollback.");
@@ -53,7 +64,7 @@ public class TcbCouponRollbackService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(java.net.URI.create(
                         normalizeBaseUrl(baseUrl)
-                                + "/retailer/rollback/"
+                                + "/" + mode + "/rollback/"
                                 + URLEncoder.encode(gs1, StandardCharsets.UTF_8)))
                 .build();
 
@@ -66,7 +77,7 @@ public class TcbCouponRollbackService {
                     HttpResponse<String> response =
                             TcbApiService.sendWithRetry(
                                     deleteRequest,
-                                    "retailer/rollback/" + gs1);
+                                    mode + "/rollback/" + gs1);
                     return Map.entry(gs1, response.body());
                 })
                 .exceptionally(exception -> {

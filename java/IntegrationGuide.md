@@ -560,6 +560,40 @@ Notes:
 - the SDK generates `client_txn_id` internally for idempotency
 - if the same request is retried due to timeout or network interruption, the same `client_txn_id` is reused for that retry path
 
+### Accelerator mode
+
+Existing method signatures keep retailer behavior. The new overloads accept
+`mode`: null, blank, or `"retailer"` uses retailer endpoints;
+`"accelerator"` uses accelerator endpoints. Other modes are rejected.
+
+```java
+String redeemResponseJson = TcbCouponRedeemService.redeemCoupons(
+        baseUrl, accessKey, accessToken, gs1s,
+        "accelerator", "retailer.example");
+
+Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+        baseUrl, accessKey, accessToken, gs1s, "accelerator");
+```
+
+Accelerator redemption posts to `/accelerator/redeem` and requires a nonblank
+retailer email domain. The supplied value is sent unchanged as
+`retailer_email_domain` in every batch. Retailer requests omit that attribute.
+Final redemption continues to omit `pre_process`.
+
+For preprocessing, append `mode, retailerEmailDomain` to
+`TcbScannedGs1Service.parseScannedGs1s(...)`,
+`TcbCouponResolutionService.resolveCoupons(..., enableLogging)`, or
+`TcbCouponResolutionService.validateCoupons(..., enableLogging)`.
+These requests retain `pre_process = "yes"` and include
+`retailer_email_domain` in accelerator mode.
+
+When using `BasketValidator.validateBasketHelper(input)`, set
+`input.mode = "accelerator"` and `input.retailerEmailDomain = "retailer.example"`.
+The corresponding JSON fields are `mode` and `retailer_email_domain`.
+
+Accelerator rollback sends DELETE to `/accelerator/rollback/:gs1`; it takes
+no retailer email domain and sends no request body.
+
 ## 13. Rollback redeemed coupons if needed
 
 If the transaction is voided or reversed, call rollback.

@@ -12,6 +12,7 @@ import java.util.concurrent.CompletionException;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 
@@ -40,8 +41,20 @@ public class TcbScannedGs1Service {
             String accessKey,
             String accessToken,
             List<String> scannedGs1s) {
+        return parseScannedGs1s(baseUrl, accessKey, accessToken, scannedGs1s, null, null);
+    }
+
+    public static List<SerializedGs1Data> parseScannedGs1s(
+            String baseUrl,
+            String accessKey,
+            String accessToken,
+            List<String> scannedGs1s,
+            String mode,
+            String retailerEmailDomain) {
 
         validateInputs(baseUrl, accessKey, accessToken, scannedGs1s);
+        String requestMode = TcbMode.normalize(mode);
+        String emailDomain = TcbMode.retailerEmailDomain(requestMode, retailerEmailDomain);
 
         List<List<SerializedGs1Data>> resolvedByInputIndex = new ArrayList<>();
         for (int index = 0; index < scannedGs1s.size(); index++) {
@@ -76,7 +89,7 @@ public class TcbScannedGs1Service {
         List<CompletableFuture<Map<Integer, List<SerializedGs1Data>>>> futures = new ArrayList<>();
 
         for (RedeemChunk chunk : chunks) {
-            futures.add(resolveChunkAsync(baseUrl, accessKey, accessToken, chunk));
+            futures.add(resolveChunkAsync(baseUrl, accessKey, accessToken, chunk, requestMode, emailDomain));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -247,35 +260,38 @@ public class TcbScannedGs1Service {
             String baseUrl,
             String accessKey,
             String accessToken,
-            RedeemChunk redeemChunk) {
+            RedeemChunk redeemChunk,
+            String mode,
+            String retailerEmailDomain) {
 
         return CompletableFuture.supplyAsync(() -> {
                     try {
                         RedeemRequest payload = new RedeemRequest();
+                        payload.retailerEmailDomain = retailerEmailDomain;
                         for (PendingRedeemInput redeemInput : redeemChunk.inputs) {
                             payload.gs1s.add(redeemInput.gs1);
                         }
 
                         HttpRequest request = TcbApiService.buildPostJsonRequest(
-                                normalizeBaseUrl(baseUrl) + "/retailer/redeem",
+                                normalizeBaseUrl(baseUrl) + "/" + mode + "/redeem",
                                 accessKey,
                                 accessToken,
                                 MAPPER.writeValueAsString(payload));
 
                         HttpResponse<String> response =
-                                TcbApiService.sendWithRetry(request, "retailer/redeem");
+                                TcbApiService.sendWithRetry(request, mode + "/redeem");
 
                         return extractResolvedGs1sByInput(response.body(), redeemChunk.inputs);
                     } catch (IOException exception) {
                         throw new IllegalStateException(
-                                "Unable to resolve scanned gs1s through TCB retailer/redeem.",
+                                "Unable to resolve scanned gs1s through TCB " + mode + "/redeem.",
                                 exception);
                     }
                 })
                 .exceptionally(exception -> {
                     throw new CompletionException(
                             new IllegalStateException(
-                                    "Unable to resolve scanned gs1 chunk through TCB retailer/redeem.",
+                                    "Unable to resolve scanned gs1 chunk through TCB " + mode + "/redeem.",
                                     exception));
                 });
     }
@@ -434,6 +450,9 @@ public class TcbScannedGs1Service {
     }
 
     private static class RedeemRequest {
+        @JsonProperty("retailer_email_domain")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String retailerEmailDomain;
         public List<String> gs1s = new ArrayList<>();
         @JsonProperty("pre_process")
         public String preProcess = "yes";
