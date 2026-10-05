@@ -2,7 +2,9 @@ package org.thecouponbureau.validate.basket.Services;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.thecouponbureau.validate.basket.factory.PurchaseFactory;
 import org.thecouponbureau.validate.basket.helper.BasketHelper;
@@ -245,72 +247,351 @@ public class RequirementService {
         // =====================================================
         } else if (additionalPurchaseRulesCode == 2) {
 
-            MeetsPurchaseRequirementsResult r1 =
-                    meetsPurchaseRequirements(coupon, basket, primaryPurchase, false);
+            // =====================================================
+            // CASE 2 → Primary AND (Secondary OR Third)
+            //
+            // Primary is mandatory.
+            // Secondary OR Third must completely satisfy its
+            // purchase requirement.
+            //
+            // If both Secondary and Third qualify, select the group
+            // that COMPLETES its required quantity first in the
+            // original basket order.
+            // =====================================================
 
-            if (!r1.status) return MeetsRequirementsResult.negative();
+            // -----------------------------------------------------
+            // Validate Primary Purchase
+            // -----------------------------------------------------
+
+            MeetsPurchaseRequirementsResult r1 =
+                    meetsPurchaseRequirements(
+                            coupon,
+                            basket,
+                            primaryPurchase,
+                            false
+                    );
+
+            if (!r1.status) {
+                return MeetsRequirementsResult.negative();
+            }
 
             List<BasketItem> basketItems1 = r1.basketItems;
             Integer unitsToPurchase1 = r1.unitsToPurchase;
 
+            // -----------------------------------------------------
+            // Validate Secondary Purchase
+            // -----------------------------------------------------
+
             boolean status2 = false;
-            boolean status3 = false;
-
             List<BasketItem> basketItems2 = null;
-            List<BasketItem> basketItems3 = null;
-
             Integer unitsToPurchase2 = null;
-            Integer unitsToPurchase3 = null;
 
-            if (secondPurchase.reqCode != null && secondPurchase.requirements != null) {
+            if (secondPurchase.reqCode != null &&
+                    secondPurchase.requirements != null) {
+
                 MeetsPurchaseRequirementsResult r2 =
-                        meetsPurchaseRequirements(coupon, basket, secondPurchase, false);
+                        meetsPurchaseRequirements(
+                                coupon,
+                                basket,
+                                secondPurchase,
+                                false
+                        );
+
                 status2 = r2.status;
                 basketItems2 = r2.basketItems;
                 unitsToPurchase2 = r2.unitsToPurchase;
             }
 
-            if (thirdPurchase.reqCode != null && thirdPurchase.requirements != null) {
+            // -----------------------------------------------------
+            // Validate Third Purchase
+            // -----------------------------------------------------
+
+            boolean status3 = false;
+            List<BasketItem> basketItems3 = null;
+            Integer unitsToPurchase3 = null;
+
+            if (thirdPurchase.reqCode != null &&
+                    thirdPurchase.requirements != null) {
+
                 MeetsPurchaseRequirementsResult r3 =
-                        meetsPurchaseRequirements(coupon, basket, thirdPurchase, false);
+                        meetsPurchaseRequirements(
+                                coupon,
+                                basket,
+                                thirdPurchase,
+                                false
+                        );
+
                 status3 = r3.status;
                 basketItems3 = r3.basketItems;
                 unitsToPurchase3 = r3.unitsToPurchase;
             }
 
-            // Require at least one of secondary or third
-            if (status2 && basketItems2 != null) {
-                assignPurchaseGroup(basketItems2, "second_purchase");
-            } else if (status3 && basketItems3 != null) {
-                assignPurchaseGroup(basketItems3, "third_purchase");
-            } else {
+            // -----------------------------------------------------
+            // Check whether Secondary / Third completely qualify
+            // -----------------------------------------------------
+
+            boolean secondaryQualified =
+                    status2 &&
+                    basketItems2 != null &&
+                    !basketItems2.isEmpty();
+
+            boolean thirdQualified =
+                    status3 &&
+                    basketItems3 != null &&
+                    !basketItems3.isEmpty();
+
+            if (!secondaryQualified && !thirdQualified) {
                 return MeetsRequirementsResult.negative();
             }
 
-            // Combine
+            // -----------------------------------------------------
+            // Select Secondary OR Third
+            //
+            // IMPORTANT:
+            // Do NOT compare the first matching basket item.
+            //
+            // Compare the position where the COMPLETE quantity
+            // requirement is reached.
+            //
+            // Example:
+            //
+            // Basket:
+            //   A A C B C
+            //
+            // B = 2 required
+            //   B x 2 -> qualifies at index 3
+            //
+            // C = 3 required
+            //   C x 1 -> not enough
+            //   C x 2 -> total 3 -> qualifies at index 4
+            //
+            // Therefore:
+            //   Primary A + Secondary B
+            // -----------------------------------------------------
+
+            boolean useSecond = false;
+            boolean useThird = false;
+
+            if (secondaryQualified && thirdQualified) {
+
+                int secondCompletionIndex =
+                        getQualificationCompletionIndex(
+                                basket,
+                                basketItems2
+                        );
+
+                int thirdCompletionIndex =
+                        getQualificationCompletionIndex(
+                                basket,
+                                basketItems3
+                        );
+
+                if (secondCompletionIndex <= thirdCompletionIndex) {
+                    useSecond = true;
+                } else {
+                    useThird = true;
+                }
+
+            } else if (secondaryQualified) {
+
+                useSecond = true;
+
+            } else {
+
+                useThird = true;
+            }
+
+            // -----------------------------------------------------
+            // Assign purchase group
+            // -----------------------------------------------------
+
+            if (useSecond) {
+                assignPurchaseGroup(
+                        basketItems2,
+                        "second_purchase"
+                );
+            }
+
+            if (useThird) {
+                assignPurchaseGroup(
+                        basketItems3,
+                        "third_purchase"
+                );
+            }
+
+            // -----------------------------------------------------
+            // Combine Primary + selected Secondary / Third
+            // -----------------------------------------------------
+
             List<BasketItem> combined = new ArrayList<>();
+
+            // Primary is always included
             combined.addAll(basketItems1);
 
-            if (status2 && basketItems2 != null)
+            // Only the selected purchase group is included
+            if (useSecond) {
                 combined.addAll(basketItems2);
-            else if (status3 && basketItems3 != null)
+            }
+
+            if (useThird) {
                 combined.addAll(basketItems3);
+            }
+
+            // -----------------------------------------------------
+            // Preserve original basket order
+            // -----------------------------------------------------
 
             List<BasketItem> basketItemsFinal =
-                    BasketHelper.reorderSubBasket(basket, combined);
+                    BasketHelper.reorderSubBasket(
+                            basket,
+                            combined
+                    );
+
+            // -----------------------------------------------------
+            // Return result
+            // -----------------------------------------------------
 
             return new MeetsRequirementsResult(
                     true,
                     basketItemsFinal,
                     unitsToPurchase1,
-                    unitsToPurchase2,
-                    unitsToPurchase3
+                    useSecond ? unitsToPurchase2 : null,
+                    useThird ? unitsToPurchase3 : null
             );
         }
 
         return MeetsRequirementsResult.negative();
     }
+    
+    private static int getQualificationCompletionIndex(
+            List<BasketItem> basket,
+            List<BasketItem> qualifyingItems) {
 
+        if (basket == null ||
+                qualifyingItems == null ||
+                qualifyingItems.isEmpty()) {
+
+            return Integer.MAX_VALUE;
+        }
+
+        // -----------------------------------------------------
+        // Build the total quantity required for the qualifying
+        // purchase group.
+        //
+        // Example:
+        // C x 1
+        // C x 2
+        //
+        // becomes:
+        // C -> 3
+        // -----------------------------------------------------
+
+        Map<String, Integer> requiredQuantities = new HashMap<>();
+
+        for (BasketItem item : qualifyingItems) {
+
+            if (item == null || item.productCode == null) {
+                continue;
+            }
+
+            int quantity = item.quantity;
+
+            requiredQuantities.merge(
+                    item.productCode,
+                    quantity,
+                    Integer::sum
+            );
+        }
+
+        if (requiredQuantities.isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+
+        // -----------------------------------------------------
+        // Scan the original basket in order.
+        // Return the basket index where the COMPLETE
+        // requirement is satisfied.
+        // -----------------------------------------------------
+
+        Map<String, Integer> consumedQuantities = new HashMap<>();
+
+        for (int basketIndex = 0;
+             basketIndex < basket.size();
+             basketIndex++) {
+
+            BasketItem basketItem = basket.get(basketIndex);
+
+            if (basketItem == null ||
+                    basketItem.productCode == null) {
+                continue;
+            }
+
+            String productCode = basketItem.productCode;
+
+            if (!requiredQuantities.containsKey(productCode)) {
+                continue;
+            }
+
+            int requiredQuantity =
+                    requiredQuantities.get(productCode);
+
+            int alreadyConsumed =
+                    consumedQuantities.getOrDefault(
+                            productCode,
+                            0
+                    );
+
+            int basketQuantity =
+                    basketItem.quantity;
+
+            int remainingQuantity =
+                    requiredQuantity - alreadyConsumed;
+
+            int quantityToConsume =
+                    Math.min(
+                            basketQuantity,
+                            remainingQuantity
+                    );
+
+            if (quantityToConsume > 0) {
+
+                consumedQuantities.put(
+                        productCode,
+                        alreadyConsumed + quantityToConsume
+                );
+            }
+
+            // -------------------------------------------------
+            // Check whether the complete requirement is met.
+            // -------------------------------------------------
+
+            boolean complete = true;
+
+            for (Map.Entry<String, Integer> entry :
+                    requiredQuantities.entrySet()) {
+
+                int required = entry.getValue();
+
+                int consumed =
+                        consumedQuantities.getOrDefault(
+                                entry.getKey(),
+                                0
+                        );
+
+                if (consumed < required) {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if (complete) {
+                return basketIndex;
+            }
+        }
+
+        return Integer.MAX_VALUE;
+    }
+    
     // =====================================================
     // Evaluates a single purchase condition
     // =====================================================
