@@ -526,7 +526,7 @@ In this second pass, send coupon objects in `coupons` with:
 Optimization:
 
 - if `validated = true`, `validateBasketHelper(...)` skips the TCB validation call for that coupon
-- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `retailer/redeem` with:
+- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `/retailer/redeem` (or `/accelerator/redeem` in accelerator mode) with:
   - `pre_process = "yes"`
   - `no_purchase_requirement = "yes"`
 - coupons not returned in `newly_redeemed` are removed
@@ -614,6 +614,38 @@ Resulting input payload shape:
 }
 ```
 
+#### Configure retailer or accelerator mode
+
+`validateBasketHelper` takes a `BasketValidationInput`. Configure the mode and
+retailer email domain on that input before calling it:
+
+```kotlin
+input.mode = "accelerator"
+input.retailerEmailDomain = "retailer.example"
+```
+
+- `mode = null`, blank, or `"retailer"` preserves retailer behavior.
+- `mode = "accelerator"` uses `/accelerator/redeem` and requires a nonblank `retailerEmailDomain` for TCB calls.
+- Modes are case-insensitive; unsupported values are rejected.
+- Accelerator requests send the supplied domain unchanged as `retailer_email_domain`, alongside `gs1s` and the existing `pre_process = "yes"` during preprocessing.
+- Retailer requests omit `retailer_email_domain`.
+- Pass the same configuration to subsequent redemption and rollback calls; setting the input does not configure these separate service calls globally.
+
+For JSON input, add these fields to the existing basket payload:
+
+```json
+{
+  "mode": "accelerator",
+  "retailer_email_domain": "retailer.example"
+}
+```
+
+Direct preprocessing calls also accept `mode, retailerEmailDomain` as the
+last two arguments: `TcbScannedGs1Service.parseScannedGs1s(...)`,
+`TcbCouponResolutionService.resolveCoupons(..., enableLogging)`, and
+`TcbCouponResolutionService.validateCoupons(..., enableLogging)`.
+Original method signatures remain supported and default to retailer mode.
+
 #### Step 8. Call `validateBasketHelper(...)`
 
 Request:
@@ -622,6 +654,8 @@ Request:
 input.tcbBaseUrl = "https://api.try.thecouponbureau.org"
 input.tcbAccessKey = "YOUR_ACCESS_KEY"
 input.tcbAccessToken = accessToken
+input.mode = "accelerator"
+input.retailerEmailDomain = "retailer.example"
 
 val result = BasketValidator.validateBasketHelper(input)
 ```
@@ -629,7 +663,7 @@ val result = BasketValidator.validateBasketHelper(input)
 What happens inside this second validation pass:
 
 1. Coupons with `validated = true` are kept as already validated.
-2. Coupons without `validated = true` are sent to TCB `retailer/redeem`.
+2. Coupons without `validated = true` are sent to TCB `/retailer/redeem` or `/accelerator/redeem`, according to `input.mode`.
 3. That TCB request uses `pre_process = "yes"` and `no_purchase_requirement = "yes"`.
 4. Coupons not returned in `newly_redeemed` are removed.
 5. Final basket validation runs locally using the surviving coupons and their local `purchase_requirement` objects.
@@ -699,9 +733,14 @@ val redeemResponseJson =
             "8112009988459000019133924009755364",
             "8112009988459000039133772240739897",
             "8112009988459000049133939957096441"
-        )
+        ),
+        input.mode,
+        input.retailerEmailDomain
     )
 ```
+
+Final redemption omits `pre_process`. Accelerator redemption includes
+`retailer_email_domain` in every batch.
 
 Response:
 
@@ -742,9 +781,13 @@ val rollbackResponses =
             "8112009988459000019133924009755364",
             "8112009988459000039133772240739897",
             "8112009988459000049133939957096441"
-        )
+        ),
+        input.mode
     )
 ```
+
+Rollback uses DELETE `/accelerator/rollback/:gs1` in accelerator mode or
+`/retailer/rollback/:gs1` in retailer mode. No retailer email domain or request body is sent.
 
 Response:
 
@@ -802,15 +845,15 @@ Response:
 The following example hardcodes basket data and scanned coupon values, then uses the SDK to resolve `gs1 -> base_gs1` and loads purchase requirements from Redis.
 
 ```kotlin
-01 package demo
-02 
-03 import com.fasterxml.jackson.databind.ObjectMapper
-04 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
-05 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
-06 import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
-07 import org.thecouponbureau.validate.basket.Services.TcbTokenService
-08 import org.thecouponbureau.validate.basket.core.BasketValidator
-09 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon
+1 package demo
+2
+3 import com.fasterxml.jackson.databind.ObjectMapper
+4 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService
+5 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService
+6 import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service
+7 import org.thecouponbureau.validate.basket.Services.TcbTokenService
+8 import org.thecouponbureau.validate.basket.core.BasketValidator
+9 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon
 10 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketItem
 11 import org.thecouponbureau.validate.basket.model.basketValidationResults.BasketValidationInput
 12 import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCoupon
@@ -818,154 +861,159 @@ The following example hardcodes basket data and scanned coupon values, then uses
 14 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement
 15 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult
 16 import redis.clients.jedis.Jedis
-17 
+17
 18 object EndToEndBasketValidationExample {
-19 
+19
 20     @JvmStatic
 21     fun main(args: Array<String>) {
 22         val tcbBaseUrl = "https://api.try.thecouponbureau.org"
 23         val tcbAccessKey = "YOUR_ACCESS_KEY"
 24         val tcbSecretKey = "YOUR_SECRET_KEY"
-25 
+25
 26         val accessToken = TcbTokenService.fetchAccessToken(
 27             tcbBaseUrl,
 28             tcbAccessKey,
 29             tcbSecretKey
 30         )
-31 
+31
 32         val basket = buildBasket()
 33         val couponsFromLocalDb = buildCouponsFromLocalDb(
 34             tcbBaseUrl,
 35             tcbAccessKey,
 36             accessToken
 37         )
-38 
+38
 39         val locallyEligibleCoupons = mutableListOf<InputCoupon>()
-40 
+40
 41         for (coupon in couponsFromLocalDb) {
 42             val localInput = LocalBasketValidationInput().apply {
 43                 this.basket = basket
 44                 this.coupons = mutableListOf(coupon)
 45             }
-46 
+46
 47             val localResult = BasketValidator.localBasketValidation(localInput)
-48 
+48
 49             if (localResult.error != null) {
 50                 continue
 51             }
-52 
+52
 53             if (localResult.basketValidationOutput != null
 54                 && localResult.basketValidationOutput.discountInCents > 0
 55             ) {
 56                 locallyEligibleCoupons.add(coupon)
 57             }
 58         }
-59 
+59
 60         val validateInput = BasketValidationInput().apply {
 61             this.basket = basket
 62             this.coupons = locallyEligibleCoupons
 63             this.tcbBaseUrl = tcbBaseUrl
 64             this.tcbAccessKey = tcbAccessKey
 65             this.tcbAccessToken = accessToken
-66             this.enableLogging = true
-67         }
-68 
-69         val finalResult = BasketValidator.validateBasketHelper(validateInput)
-70 
-71         println("discount_in_cents = ${finalResult.basketValidationOutput.discountInCents}")
-72 
-73         for (appliedCoupon: AppliedCoupon in finalResult.basketValidationOutput.appliedCoupons) {
-74             println("coupon_code = ${appliedCoupon.couponCode}")
-75             println("face_value_in_cents = ${appliedCoupon.faceValueInCents}")
-76             println("gtins = ${appliedCoupon.productCodes["gtins"]}")
-77         }
-78 
-79         val appliedCouponGs1s = finalResult.basketValidationOutput.appliedCoupons
-80             .map { appliedCoupon -> appliedCoupon.couponCode }
-81 
-82         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
-83         // Only after transaction success should retailer redeem the applied coupons in TCB.
-84 
-85         val redeemResponse = TcbCouponRedeemService.redeemCoupons(
-86             tcbBaseUrl,
-87             tcbAccessKey,
-88             accessToken,
-89             appliedCouponGs1s
-90         )
-91 
-92         println("redeemResponse = $redeemResponse")
-93 
-94         // If transaction is voided later, roll back those redeemed coupons.
-95         val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-96             tcbBaseUrl,
-97             tcbAccessKey,
-98             accessToken,
-99             appliedCouponGs1s
-100         )
-101 
-102         println("rollbackResponses = $rollbackResponses")
-103     }
-104 
-105     private fun buildBasket(): MutableList<BasketItem> {
-106         return mutableListOf(
-107             basketItem("037000930396", 1.29, 1),
-108             basketItem("037000934677", 1.34, 1),
-109             basketItem("030772076835", 3.07, 2),
-110             basketItem("037000534358", 6.62, 1),
-111             basketItem("037000808893", 5.64, 1)
-112         )
-113     }
-114 
-115     private fun buildCouponsFromLocalDb(
-116         tcbBaseUrl: String,
-117         tcbAccessKey: String,
-118         accessToken: String
-119     ): MutableList<InputCoupon> {
-120         val scannedCoupons = listOf(
-121             "8112009988459000019133924009755364",
-122             "8112009988459000039133772240739897",
-123             "8112009988459000049133939957096441"
-124         )
-125 
-126         val resolvedCoupons = TcbScannedGs1Service.parseScannedGs1s(
-127             tcbBaseUrl,
-128             tcbAccessKey,
-129             accessToken,
-130             scannedCoupons
-131         )
-132 
-133         val mapper = ObjectMapper()
-134         val coupons = mutableListOf<InputCoupon>()
-135 
-136         Jedis("localhost", 6379).use { jedis ->
-137             for (resolvedCoupon in resolvedCoupons) {
-138                 val purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1) ?: continue
-139 
-140                 val purchaseRequirement = mapper.readValue(
-141                     purchaseRequirementJson,
-142                     PurchaseRequirement::class.java
-143                 )
-144 
-145                 coupons.add(
-146                     InputCoupon().apply {
-147                         gs1 = resolvedCoupon.gs1
-148                         this.purchaseRequirement = purchaseRequirement
-149                         validated = resolvedCoupon.validated
-150                     }
-151                 )
-152             }
-153         }
-154 
-155         return coupons
-156     }
-157 
-158     private fun basketItem(productCode: String, price: Double, quantity: Int): BasketItem {
-159         return BasketItem().apply {
-160             this.productCode = productCode
-161             this.price = price
-162             this.quantity = quantity
-163             this.unit = "item"
-164         }
-165     }
-166 }
+66             this.mode = "accelerator"
+67             this.retailerEmailDomain = "retailer.example"
+68             this.enableLogging = true
+69         }
+70
+71         val finalResult = BasketValidator.validateBasketHelper(validateInput)
+72
+73         println("discount_in_cents = ${finalResult.basketValidationOutput.discountInCents}")
+74
+75         for (appliedCoupon: AppliedCoupon in finalResult.basketValidationOutput.appliedCoupons) {
+76             println("coupon_code = ${appliedCoupon.couponCode}")
+77             println("face_value_in_cents = ${appliedCoupon.faceValueInCents}")
+78             println("gtins = ${appliedCoupon.productCodes["gtins"]}")
+79         }
+80
+81         val appliedCouponGs1s = finalResult.basketValidationOutput.appliedCoupons
+82             .map { appliedCoupon -> appliedCoupon.couponCode }
+83
+84         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
+85         // Only after transaction success should retailer redeem the applied coupons in TCB.
+86
+87         val redeemResponse = TcbCouponRedeemService.redeemCoupons(
+88             tcbBaseUrl,
+89             tcbAccessKey,
+90             accessToken,
+91             appliedCouponGs1s,
+92             validateInput.mode,
+93             validateInput.retailerEmailDomain
+94         )
+95
+96         println("redeemResponse = $redeemResponse")
+97
+98         // If transaction is voided later, roll back those redeemed coupons.
+99         val rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+100             tcbBaseUrl,
+101             tcbAccessKey,
+102             accessToken,
+103             appliedCouponGs1s,
+104             validateInput.mode
+105         )
+106
+107         println("rollbackResponses = $rollbackResponses")
+108     }
+109
+110     private fun buildBasket(): MutableList<BasketItem> {
+111         return mutableListOf(
+112             basketItem("037000930396", 1.29, 1),
+113             basketItem("037000934677", 1.34, 1),
+114             basketItem("030772076835", 3.07, 2),
+115             basketItem("037000534358", 6.62, 1),
+116             basketItem("037000808893", 5.64, 1)
+117         )
+118     }
+119
+120     private fun buildCouponsFromLocalDb(
+121         tcbBaseUrl: String,
+122         tcbAccessKey: String,
+123         accessToken: String
+124     ): MutableList<InputCoupon> {
+125         val scannedCoupons = listOf(
+126             "8112009988459000019133924009755364",
+127             "8112009988459000039133772240739897",
+128             "8112009988459000049133939957096441"
+129         )
+130
+131         val resolvedCoupons = TcbScannedGs1Service.parseScannedGs1s(
+132             tcbBaseUrl,
+133             tcbAccessKey,
+134             accessToken,
+135             scannedCoupons
+136         )
+137
+138         val mapper = ObjectMapper()
+139         val coupons = mutableListOf<InputCoupon>()
+140
+141         Jedis("localhost", 6379).use { jedis ->
+142             for (resolvedCoupon in resolvedCoupons) {
+143                 val purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1) ?: continue
+144
+145                 val purchaseRequirement = mapper.readValue(
+146                     purchaseRequirementJson,
+147                     PurchaseRequirement::class.java
+148                 )
+149
+150                 coupons.add(
+151                     InputCoupon().apply {
+152                         gs1 = resolvedCoupon.gs1
+153                         this.purchaseRequirement = purchaseRequirement
+154                         validated = resolvedCoupon.validated
+155                     }
+156                 )
+157             }
+158         }
+159
+160         return coupons
+161     }
+162
+163     private fun basketItem(productCode: String, price: Double, quantity: Int): BasketItem {
+164         return BasketItem().apply {
+165             this.productCode = productCode
+166             this.price = price
+167             this.quantity = quantity
+168             this.unit = "item"
+169         }
+170     }
+171 }
 ```

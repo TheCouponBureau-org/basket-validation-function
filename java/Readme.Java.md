@@ -519,7 +519,7 @@ In this second pass, send coupon objects in `coupons` with:
 Optimization:
 
 - if `validated = true`, `validateBasketHelper(...)` skips the TCB validation call for that coupon
-- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `retailer/redeem` with:
+- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `/retailer/redeem` (or `/accelerator/redeem` in accelerator mode) with:
   - `pre_process = "yes"`
   - `no_purchase_requirement = "yes"`
 - coupons not returned in `newly_redeemed` are removed
@@ -613,6 +613,38 @@ Resulting input payload shape:
 }
 ```
 
+#### Configure retailer or accelerator mode
+
+`validateBasketHelper` takes a `BasketValidationInput`. Configure the mode and
+retailer email domain on that input before calling it:
+
+```java
+input.mode = "accelerator";
+input.retailerEmailDomain = "retailer.example";
+```
+
+- `mode = null`, blank, or `"retailer"` preserves retailer behavior.
+- `mode = "accelerator"` uses `/accelerator/redeem` and requires a nonblank `retailerEmailDomain` for TCB calls.
+- Modes are case-insensitive; unsupported values are rejected.
+- Accelerator requests send the supplied domain unchanged as `retailer_email_domain`, alongside `gs1s` and the existing `pre_process = "yes"` during preprocessing.
+- Retailer requests omit `retailer_email_domain`.
+- Pass the same configuration to subsequent redemption and rollback calls; setting the input does not configure these separate service calls globally.
+
+For JSON input, add these fields to the existing basket payload:
+
+```json
+{
+  "mode": "accelerator",
+  "retailer_email_domain": "retailer.example"
+}
+```
+
+Direct preprocessing calls also accept `mode, retailerEmailDomain` as the
+last two arguments: `TcbScannedGs1Service.parseScannedGs1s(...)`,
+`TcbCouponResolutionService.resolveCoupons(..., enableLogging)`, and
+`TcbCouponResolutionService.validateCoupons(..., enableLogging)`.
+Original method signatures remain supported and default to retailer mode.
+
 #### Step 8. Call `validateBasketHelper(...)`
 
 Request:
@@ -621,6 +653,8 @@ Request:
 input.tcbBaseUrl = "https://api.try.thecouponbureau.org";
 input.tcbAccessKey = "YOUR_ACCESS_KEY";
 input.tcbAccessToken = accessToken;
+input.mode = "accelerator";
+input.retailerEmailDomain = "retailer.example";
 
 ValidationResult result = BasketValidator.validateBasketHelper(input);
 ```
@@ -628,7 +662,7 @@ ValidationResult result = BasketValidator.validateBasketHelper(input);
 What happens inside this second validation pass:
 
 1. Coupons with `validated = true` are kept as already validated.
-2. Coupons without `validated = true` are sent to TCB `retailer/redeem`.
+2. Coupons without `validated = true` are sent to TCB `/retailer/redeem` or `/accelerator/redeem`, according to `input.mode`.
 3. That TCB request uses `pre_process = "yes"` and `no_purchase_requirement = "yes"`.
 4. Coupons not returned in `newly_redeemed` are removed.
 5. Final basket validation runs locally using the surviving coupons and their local `purchase_requirement` objects.
@@ -697,8 +731,13 @@ String redeemResponseJson =
                 Arrays.asList(
                         "8112009988459000019133924009755364",
                         "8112009988459000039133772240739897",
-                        "8112009988459000049133939957096441"));
+                        "8112009988459000049133939957096441"),
+                input.mode,
+                input.retailerEmailDomain);
 ```
+
+Final redemption omits `pre_process`. Accelerator redemption includes
+`retailer_email_domain` in every batch.
 
 Response:
 
@@ -738,8 +777,12 @@ Map<String, String> rollbackResponses =
                 Arrays.asList(
                         "8112009988459000019133924009755364",
                         "8112009988459000039133772240739897",
-                        "8112009988459000049133939957096441"));
+                        "8112009988459000049133939957096441"),
+                input.mode);
 ```
+
+Rollback uses DELETE `/accelerator/rollback/:gs1` in accelerator mode or
+`/retailer/rollback/:gs1` in retailer mode. No retailer email domain or request body is sent.
 
 Response:
 
@@ -797,15 +840,15 @@ Response:
 The following example hardcodes basket data and scanned coupon values, then uses the SDK to resolve `gs1 -> base_gs1` and loads purchase requirements from Redis.
 
 ```java
-01 package demo;
-02 
-03 import com.fasterxml.jackson.databind.ObjectMapper;
-04 import java.util.ArrayList;
-05 import java.util.List;
-06 import java.util.Map;
-07 import java.util.stream.Collectors;
-08 import redis.clients.jedis.Jedis;
-09 
+1 package demo;
+2
+3 import com.fasterxml.jackson.databind.ObjectMapper;
+4 import java.util.ArrayList;
+5 import java.util.List;
+6 import java.util.Map;
+7 import java.util.stream.Collectors;
+8 import redis.clients.jedis.Jedis;
+9
 10 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService;
 11 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService;
 12 import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
@@ -818,153 +861,158 @@ The following example hardcodes basket data and scanned coupon values, then uses
 19 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 20 import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
 21 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
-22 
+22
 23 public class EndToEndBasketValidationExample {
-24 
+24
 25     public static void main(String[] args) throws Exception {
 26         String tcbBaseUrl = "https://api.try.thecouponbureau.org";
 27         String tcbAccessKey = "YOUR_ACCESS_KEY";
 28         String tcbSecretKey = "YOUR_SECRET_KEY";
-29 
+29
 30         String accessToken = TcbTokenService.fetchAccessToken(
 31                 tcbBaseUrl,
 32                 tcbAccessKey,
 33                 tcbSecretKey);
-34 
+34
 35         List<BasketItem> basket = buildBasket();
 36         List<InputCoupon> couponsFromLocalDb = buildCouponsFromLocalDb(
 37                 tcbBaseUrl,
 38                 tcbAccessKey,
 39                 accessToken);
-40 
+40
 41         List<InputCoupon> locallyEligibleCoupons = new ArrayList<>();
-42 
+42
 43         for (InputCoupon coupon : couponsFromLocalDb) {
 44             LocalBasketValidationInput localInput = new LocalBasketValidationInput();
 45             localInput.basket = basket;
 46             localInput.coupons = List.of(coupon);
-47 
+47
 48             ValidationResult localResult = BasketValidator.localBasketValidation(localInput);
-49 
+49
 50             if (localResult.error != null) {
 51                 continue;
 52             }
-53 
+53
 54             if (localResult.basketValidationOutput != null
 55                     && localResult.basketValidationOutput.discountInCents > 0) {
 56                 locallyEligibleCoupons.add(coupon);
 57             }
 58         }
-59 
+59
 60         BasketValidationInput validateInput = new BasketValidationInput();
 61         validateInput.basket = basket;
 62         validateInput.coupons = locallyEligibleCoupons;
 63         validateInput.tcbBaseUrl = tcbBaseUrl;
 64         validateInput.tcbAccessKey = tcbAccessKey;
 65         validateInput.tcbAccessToken = accessToken;
-66         validateInput.enableLogging = true;
-67 
-68         ValidationResult finalResult =
-69                 BasketValidator.validateBasketHelper(validateInput);
-70 
-71         System.out.println("discount_in_cents = "
-72                 + finalResult.basketValidationOutput.discountInCents);
-73 
-74         for (AppliedCoupon appliedCoupon : finalResult.basketValidationOutput.appliedCoupons) {
-75             System.out.println("coupon_code = " + appliedCoupon.couponCode);
-76             System.out.println("face_value_in_cents = " + appliedCoupon.faceValueInCents);
-77             System.out.println("gtins = " + appliedCoupon.productCodes.get("gtins"));
-78         }
-79 
-80         List<String> appliedCouponGs1s =
-81                 finalResult.basketValidationOutput.appliedCoupons.stream()
-82                         .map(appliedCoupon -> appliedCoupon.couponCode)
-83                         .collect(Collectors.toList());
-84 
-85         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
-86         // Only after transaction success should retailer redeem the applied coupons in TCB.
-87 
-88         String redeemResponse = TcbCouponRedeemService.redeemCoupons(
-89                 tcbBaseUrl,
-90                 tcbAccessKey,
-91                 accessToken,
-92                 appliedCouponGs1s);
-93 
-94         System.out.println("redeemResponse = " + redeemResponse);
-95 
-96         // If transaction is voided later, roll back those redeemed coupons.
-97         Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-98                 tcbBaseUrl,
-99                 tcbAccessKey,
-100                 accessToken,
-101                 appliedCouponGs1s);
-102 
-103         System.out.println("rollbackResponses = " + rollbackResponses);
-104     }
-105 
-106     private static List<BasketItem> buildBasket() {
-107         List<BasketItem> basket = new ArrayList<>();
-108 
-109         basket.add(basketItem("037000930396", 1.29, 1));
-110         basket.add(basketItem("037000934677", 1.34, 1));
-111         basket.add(basketItem("030772076835", 3.07, 2));
-112         basket.add(basketItem("037000534358", 6.62, 1));
-113         basket.add(basketItem("037000808893", 5.64, 1));
-114 
-115         return basket;
-116     }
-117 
-118     private static List<InputCoupon> buildCouponsFromLocalDb(
-119             String tcbBaseUrl,
-120             String tcbAccessKey,
-121             String accessToken) throws Exception {
-122 
-123         List<String> scannedCoupons = List.of(
-124                 "8112009988459000019133924009755364",
-125                 "8112009988459000039133772240739897",
-126                 "8112009988459000049133939957096441");
-127 
-128         List<TcbScannedGs1Service.SerializedGs1Data> resolvedCoupons =
-129                 TcbScannedGs1Service.parseScannedGs1s(
-130                         tcbBaseUrl,
-131                         tcbAccessKey,
-132                         accessToken,
-133                         scannedCoupons);
-134 
-135         ObjectMapper mapper = new ObjectMapper();
-136         List<InputCoupon> coupons = new ArrayList<>();
-137 
-138         try (Jedis jedis = new Jedis("localhost", 6379)) {
-139             for (TcbScannedGs1Service.SerializedGs1Data resolvedCoupon : resolvedCoupons) {
-140                 String purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1);
-141 
-142                 if (purchaseRequirementJson == null) {
-143                     continue;
-144                 }
-145 
-146                 PurchaseRequirement purchaseRequirement =
-147                         mapper.readValue(
-148                                 purchaseRequirementJson,
-149                                 PurchaseRequirement.class);
-150 
-151                 InputCoupon coupon = new InputCoupon();
-152                 coupon.gs1 = resolvedCoupon.gs1;
-153                 coupon.purchaseRequirement = purchaseRequirement;
-154                 coupon.validated = resolvedCoupon.validated;
-155                 coupons.add(coupon);
-156             }
-157         }
-158 
-159         return coupons;
-160     }
-161 
-162     private static BasketItem basketItem(String productCode, double price, int quantity) {
-163         BasketItem item = new BasketItem();
-164         item.productCode = productCode;
-165         item.price = price;
-166         item.quantity = quantity;
-167         item.unit = "item";
-168         return item;
-169     }
-170 }
+66         validateInput.mode = "accelerator";
+67         validateInput.retailerEmailDomain = "retailer.example";
+68         validateInput.enableLogging = true;
+69
+70         ValidationResult finalResult =
+71                 BasketValidator.validateBasketHelper(validateInput);
+72
+73         System.out.println("discount_in_cents = "
+74                 + finalResult.basketValidationOutput.discountInCents);
+75
+76         for (AppliedCoupon appliedCoupon : finalResult.basketValidationOutput.appliedCoupons) {
+77             System.out.println("coupon_code = " + appliedCoupon.couponCode);
+78             System.out.println("face_value_in_cents = " + appliedCoupon.faceValueInCents);
+79             System.out.println("gtins = " + appliedCoupon.productCodes.get("gtins"));
+80         }
+81
+82         List<String> appliedCouponGs1s =
+83                 finalResult.basketValidationOutput.appliedCoupons.stream()
+84                         .map(appliedCoupon -> appliedCoupon.couponCode)
+85                         .collect(Collectors.toList());
+86
+87         // Transaction done in POS using finalResult.basketValidationOutput.discountInCents
+88         // Only after transaction success should retailer redeem the applied coupons in TCB.
+89
+90         String redeemResponse = TcbCouponRedeemService.redeemCoupons(
+91                 tcbBaseUrl,
+92                 tcbAccessKey,
+93                 accessToken,
+94                 appliedCouponGs1s,
+95                 validateInput.mode,
+96                 validateInput.retailerEmailDomain);
+97
+98         System.out.println("redeemResponse = " + redeemResponse);
+99
+100         // If transaction is voided later, roll back those redeemed coupons.
+101         Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
+102                 tcbBaseUrl,
+103                 tcbAccessKey,
+104                 accessToken,
+105                 appliedCouponGs1s,
+106                 validateInput.mode);
+107
+108         System.out.println("rollbackResponses = " + rollbackResponses);
+109     }
+110
+111     private static List<BasketItem> buildBasket() {
+112         List<BasketItem> basket = new ArrayList<>();
+113
+114         basket.add(basketItem("037000930396", 1.29, 1));
+115         basket.add(basketItem("037000934677", 1.34, 1));
+116         basket.add(basketItem("030772076835", 3.07, 2));
+117         basket.add(basketItem("037000534358", 6.62, 1));
+118         basket.add(basketItem("037000808893", 5.64, 1));
+119
+120         return basket;
+121     }
+122
+123     private static List<InputCoupon> buildCouponsFromLocalDb(
+124             String tcbBaseUrl,
+125             String tcbAccessKey,
+126             String accessToken) throws Exception {
+127
+128         List<String> scannedCoupons = List.of(
+129                 "8112009988459000019133924009755364",
+130                 "8112009988459000039133772240739897",
+131                 "8112009988459000049133939957096441");
+132
+133         List<TcbScannedGs1Service.SerializedGs1Data> resolvedCoupons =
+134                 TcbScannedGs1Service.parseScannedGs1s(
+135                         tcbBaseUrl,
+136                         tcbAccessKey,
+137                         accessToken,
+138                         scannedCoupons);
+139
+140         ObjectMapper mapper = new ObjectMapper();
+141         List<InputCoupon> coupons = new ArrayList<>();
+142
+143         try (Jedis jedis = new Jedis("localhost", 6379)) {
+144             for (TcbScannedGs1Service.SerializedGs1Data resolvedCoupon : resolvedCoupons) {
+145                 String purchaseRequirementJson = jedis.get(resolvedCoupon.baseGs1);
+146
+147                 if (purchaseRequirementJson == null) {
+148                     continue;
+149                 }
+150
+151                 PurchaseRequirement purchaseRequirement =
+152                         mapper.readValue(
+153                                 purchaseRequirementJson,
+154                                 PurchaseRequirement.class);
+155
+156                 InputCoupon coupon = new InputCoupon();
+157                 coupon.gs1 = resolvedCoupon.gs1;
+158                 coupon.purchaseRequirement = purchaseRequirement;
+159                 coupon.validated = resolvedCoupon.validated;
+160                 coupons.add(coupon);
+161             }
+162         }
+163
+164         return coupons;
+165     }
+166
+167     private static BasketItem basketItem(String productCode, double price, int quantity) {
+168         BasketItem item = new BasketItem();
+169         item.productCode = productCode;
+170         item.price = price;
+171         item.quantity = quantity;
+172         item.unit = "item";
+173         return item;
+174     }
+175 }
 ```
