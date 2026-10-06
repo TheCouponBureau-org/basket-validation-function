@@ -519,7 +519,7 @@ In this second pass, send coupon objects in `coupons` with:
 Optimization:
 
 - if `validated = true`, `validateBasketHelper(...)` skips the TCB validation call for that coupon
-- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `/retailer/redeem` (or `/accelerator/redeem` in accelerator mode) with:
+- if `validated` is not `true`, `validateBasketHelper(...)` calls TCB `/retailer/redeem` with:
   - `pre_process = "yes"`
   - `no_purchase_requirement = "yes"`
 - coupons not returned in `newly_redeemed` are removed
@@ -624,7 +624,7 @@ input.retailerEmailDomain = "retailer.example";
 ```
 
 - `mode = null`, blank, or `"retailer"` preserves retailer behavior.
-- `mode = "accelerator"` uses `/accelerator/redeem` and requires a nonblank `retailerEmailDomain` for TCB calls.
+- `mode = "accelerator"` requires a nonblank `retailerEmailDomain` for TCB calls.
 - Modes are case-insensitive; unsupported values are rejected.
 - Accelerator requests send the supplied domain unchanged as `retailer_email_domain`, alongside `gs1s` and the existing `pre_process = "yes"` during preprocessing.
 - Retailer requests omit `retailer_email_domain`.
@@ -662,7 +662,7 @@ ValidationResult result = BasketValidator.validateBasketHelper(input);
 What happens inside this second validation pass:
 
 1. Coupons with `validated = true` are kept as already validated.
-2. Coupons without `validated = true` are sent to TCB `/retailer/redeem` or `/accelerator/redeem`, according to `input.mode`.
+2. Coupons without `validated = true` are sent to TCB `/retailer/redeem`.
 3. That TCB request uses `pre_process = "yes"` and `no_purchase_requirement = "yes"`.
 4. Coupons not returned in `newly_redeemed` are removed.
 5. Final basket validation runs locally using the surviving coupons and their local `purchase_requirement` objects.
