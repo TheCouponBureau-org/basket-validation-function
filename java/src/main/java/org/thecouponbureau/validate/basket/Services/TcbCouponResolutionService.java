@@ -256,7 +256,7 @@ public class TcbCouponResolutionService {
             }
 
             HttpRequest request = TcbApiService.buildPostJsonRequest(
-                    normalizeBaseUrl(baseUrl) + "/" + mode + "/redeem",
+                    normalizeBaseUrl(baseUrl) + "/retailer/redeem",
                     accessKey,
                     accessToken,
                     MAPPER.writeValueAsString(payload));

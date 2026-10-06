@@ -1,5 +1,7 @@
 package org.thecouponbureau.validate.basket;
 
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -17,6 +19,8 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.thecouponbureau.validate.basket.Services.TcbCouponRedeemService;
 import org.thecouponbureau.validate.basket.Services.TcbCouponRollbackService;
+import org.thecouponbureau.validate.basket.Services.TcbMofSyncService;
+import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
 import org.thecouponbureau.validate.basket.Services.TcbTokenService;
 import org.thecouponbureau.validate.basket.core.BasketValidator;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.AppliedCoupon;
@@ -29,24 +33,36 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.Validat
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import static org.junit.jupiter.api.Assertions.fail;
 
-import org.thecouponbureau.validate.basket.Services.TcbMofSyncService;
-import org.thecouponbureau.validate.basket.Services.TcbScannedGs1Service;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import redis.clients.jedis.Jedis;
 
 public class BasketValidationService {
 
 	private static final Logger logger = LogManager.getLogger(BasketValidationService.class);
 
+	private String tcbBaseUrl;
+	private String tcbAccessKey;
+	private String tcbSecretKey;
+	private String mode;
+	private String retailerEmailDomain;
+
+	public BasketValidationService(String tcbBaseUrl, String tcbAccessKey, String tcbSecretKey, String mode,
+			String retailerEmailDomain) {
+		this.tcbBaseUrl = tcbBaseUrl;
+		this.tcbAccessKey = tcbAccessKey;
+		this.tcbSecretKey = tcbSecretKey;
+		this.mode = mode;
+		this.retailerEmailDomain = retailerEmailDomain;
+
+	}
+
 	private void setTcbConfiguration(BasketValidationInput input) {
 
-		input.tcbBaseUrl = "https://api.try.thecouponbureau.org/";
-		input.tcbAccessKey = "8053fd0f80cf3778659def1359cac218";
-		input.tcbAccessToken = TcbTokenService.fetchAccessToken(input.tcbBaseUrl, input.tcbAccessKey,
-				"eb42623aa2675e50f15da4f6d4aa0ad6");
+		input.tcbBaseUrl = tcbBaseUrl;
+		input.tcbAccessKey = tcbAccessKey;
+		input.tcbAccessToken = TcbTokenService.fetchAccessToken(tcbBaseUrl, tcbAccessKey, tcbSecretKey);
+		input.mode = mode; 
+		input.retailerEmailDomain = retailerEmailDomain;
 
 	}
 
@@ -87,7 +103,7 @@ public class BasketValidationService {
 				logger.info("Coupons: {}", gs1List);
 
 				redeemResponse = TcbCouponRedeemService.redeemCoupons(input.tcbBaseUrl, input.tcbAccessKey,
-						input.tcbAccessToken, gs1List);
+						input.tcbAccessToken, gs1List, input.mode, input.retailerEmailDomain);
 
 				logger.info("====================================");
 				logger.info("Redeem Response");
@@ -136,7 +152,7 @@ public class BasketValidationService {
 					logger.info(rollbackGs1List);
 
 					Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(input.tcbBaseUrl,
-							input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List);
+							input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List, input.mode);
 
 					logger.info("Rollback Response:");
 
@@ -411,7 +427,7 @@ public class BasketValidationService {
 						logger.info(scenario);
 
 						String redeemResponse = TcbCouponRedeemService.redeemCoupons(input.tcbBaseUrl,
-								input.tcbAccessKey, input.tcbAccessToken, gs1List);
+								input.tcbAccessKey, input.tcbAccessToken, gs1List, input.mode, input.retailerEmailDomain);
 
 						logger.info("");
 						logger.info("Redeem Response:");
@@ -632,11 +648,9 @@ public class BasketValidationService {
 				 * Get the coupons array from input
 				 */
 				Set<String> seen = new HashSet<>();
-				List<String> inputCoupons = input.coupons.stream()
-				        .map(coupon -> coupon.gs1)
-				        .filter(gs1 -> gs1 != null && !gs1.isEmpty())
-				        .filter(gs1 -> gs1.startsWith("81122") || seen.add(gs1))
-				        .toList();
+				List<String> inputCoupons = input.coupons.stream().map(coupon -> coupon.gs1)
+						.filter(gs1 -> gs1 != null && !gs1.isEmpty())
+						.filter(gs1 -> gs1.startsWith("81122") || seen.add(gs1)).toList();
 
 				/**
 				 * Get the array of coupons with purchase requirements
@@ -714,7 +728,7 @@ public class BasketValidationService {
 						logger.info(scenario);
 
 						String redeemResponse = TcbCouponRedeemService.redeemCoupons(input.tcbBaseUrl,
-								input.tcbAccessKey, input.tcbAccessToken, gs1List);
+								input.tcbAccessKey, input.tcbAccessToken, gs1List, input.mode, input.retailerEmailDomain);
 
 						logger.info("");
 						logger.info("Redeem Response:");
