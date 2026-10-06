@@ -456,7 +456,7 @@ public class BasketValidationService {
 							logger.info(rollbackGs1List);
 
 							Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-									input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List);
+									input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List, input.mode);
 
 							logger.info("Rollback Response:");
 
@@ -757,7 +757,7 @@ public class BasketValidationService {
 							logger.info(rollbackGs1List);
 
 							Map<String, String> rollbackResponses = TcbCouponRollbackService.rollbackCoupons(
-									input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List);
+									input.tcbBaseUrl, input.tcbAccessKey, input.tcbAccessToken, rollbackGs1List, input.mode);
 
 							logger.info("Rollback Response:");
 
