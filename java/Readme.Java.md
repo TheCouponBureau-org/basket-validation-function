@@ -73,10 +73,9 @@ List<String> appliedGs1s = output.appliedCoupons.stream()
 Add one `InputCoupon` per scanned value. Fetch codes can also be supplied in
 `gs1`; the helper resolves them through TCB. No separate parsing call is needed.
 
-The helper calls `/retailer/redeem` (or `/accelerator/redeem`) with
-`pre_process = "yes"`, obtains purchase requirements, and evaluates qualifying
-basket items. This preprocessing call does **not** finalize redemption.
-`output.appliedCoupons` contains the serialized coupon codes to redeem.
+The helper obtains purchase requirements and evaluates qualifying basket items.
+Validation does **not** finalize redemption. `output.appliedCoupons` contains
+the serialized coupon codes to pass to `redeemCoupons(...)` after checkout.
 
 Handle `result.error` and API exceptions before applying a discount. An empty
 `appliedCoupons` list means no coupon discount should be applied; sample codes
@@ -168,11 +167,10 @@ input.mode = "accelerator";
 input.retailerEmailDomain = "retailer.example";
 ```
 
-Null, blank, or `"retailer"` mode uses retailer endpoints. `"accelerator"` requires
-a nonblank retailer email domain and uses accelerator endpoints. Modes are
+Null, blank, or `"retailer"` mode selects retailer integration. `"accelerator"`
+selects accelerator integration and requires a nonblank retailer email domain. Modes are
 case-insensitive; unsupported values are rejected. For JSON input the domain
 field is `retailer_email_domain`.
 
 Pass the same mode/domain to final redemption as shown above. Rollback takes
-only the mode and sends DELETE `/retailer/rollback/:gs1` or
-`/accelerator/rollback/:gs1`, with no domain or request body.
+only the mode; no retailer email domain is needed.
