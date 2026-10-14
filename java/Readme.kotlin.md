@@ -80,6 +80,51 @@ Handle `result.error` and API exceptions before applying a discount. An empty
 `appliedCoupons` list means no coupon discount should be applied; sample codes
 do not guarantee a discount against live test data.
 
+### Sample input and output
+
+The same input in JSON (using Jackson's `SNAKE_CASE` naming strategy):
+
+```json
+{
+  "basket": [
+    {
+      "product_code": "037000930396",
+      "price": 1.29,
+      "quantity": 2,
+      "unit": "item"
+    }
+  ],
+  "coupons": [
+    { "gs1": "8112009988459000019133924009755364" }
+  ],
+  "tcb_base_url": "https://api.try.thecouponbureau.org",
+  "tcb_access_key": "YOUR_ACCESS_KEY",
+  "tcb_access_token": "YOUR_ACCESS_TOKEN",
+  "mode": "retailer"
+}
+```
+
+No `purchase_requirement` is supplied; the SDK obtains it from TCB.
+Assuming TCB accepts the coupon and returns an offer for $1 off two qualifying
+items, the serialized validation result is:
+
+```json
+{
+  "discount_in_cents": 100,
+  "applied_coupons": [
+    {
+      "coupon_code": "8112009988459000019133924009755364",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": ["037000930396"]
+      }
+    }
+  ]
+}
+```
+
+This is the basket validation output, not the final redemption response.
+
 ## 3. Complete checkout and redeem
 
 Use `output.discountInCents` as the POS coupon discount. After the transaction
