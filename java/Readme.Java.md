@@ -1,11 +1,9 @@
-# Java integration — no local database
+# Java Integration
 
-A local database is **optional**. Send the basket and scanned coupon codes to
-`validateBasketHelper(...)`; the SDK obtains coupon purchase requirements from
-the TCB API and calculates the discount in your application. No Redis, MOF sync,
-or local offer lookup is required. Internet access to TCB is required.
+Send the basket and scanned coupon codes to `validateBasketHelper(...)`;
+the SDK obtains coupon purchase requirements and calculates the discount in
+your application. Internet access to TCB is required.
 
-For the optional database workflow, see [Java with a local database](ReadmeWithLocalDatabase.java.md).
 For the other language, see [Kotlin](Readme.kotlin.md).
 
 ## 1. Build and add the SDK
