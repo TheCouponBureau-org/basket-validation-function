@@ -28,7 +28,7 @@ public class BasketValidationServiceTest {
 				"d977468da5969dd03ffe4864043f21a7", "6d3e571583e0ffdb479ad0ef913cb42e", "accelerator",
 				"automationretailer1.thecouponbureau.org");*/
 
-		runner.validateBasket("LoyaltyLane_POS_Basket_Validation_UseCases.xlsx", "validateBasket");
+		runner.validateBasket("POS_Basket_Validation_UseCases.xlsx", "validateBasket");
 	}
 
 	@Test
