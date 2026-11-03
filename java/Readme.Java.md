@@ -155,6 +155,8 @@ java.util.Map<String, String> rollbackResponses = TcbCouponRollbackService.rollb
 
 Check each rollback response. Do not call rollback during successful checkout.
 
+**60-minute rollback window:** Rollback is allowed within 60 minutes of the coupon redemption time. After 60 minutes, rollback is not allowed.
+
 ## Retailer or accelerator mode
 
 The example defaults to retailer mode. For accelerator integration, set these
