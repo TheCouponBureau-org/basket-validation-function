@@ -7,7 +7,7 @@ function loadConfig(environment = process.env) {
         tcbAccessKey: environment.TCB_ACCESS_KEY,
         tcbSecretKey: environment.TCB_SECRET_KEY,
         redisUrl: environment.REDIS_URL || "redis://redis:6379",
-        mofSyncCron: environment.MOF_SYNC_CRON || "0 2 * * *",
+        mofSyncCron: environment.MOF_SYNC_CRON || "0 */4 * * *",
         mofSyncOnStart: parseBoolean(environment.MOF_SYNC_ON_START, true),
         tokenTtlSeconds: parsePositiveInteger(environment.TCB_TOKEN_TTL_SECONDS, 82_800),
     };

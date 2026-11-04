@@ -7,7 +7,7 @@ JavaScript SDK in `../js`. One Docker Compose command starts:
 - Redis with persistent storage;
 - a 23-hour TCB access-token cache;
 - an initial six-month MOF synchronization on first startup;
-- incremental MOF synchronization on later startups and on a cron schedule.
+- incremental MOF synchronization for the recent two-day window every four hours.
 
 Validation resolves scanned GS1 values, loads purchase requirements from Redis,
 checks coupon status with TCB, and preserves the caller's coupon order. If an MOF
@@ -35,22 +35,22 @@ the `tcb-redis-data` Docker volume.
 ## MOF synchronization
 
 On the first successful startup sync, the server requests the previous six
-months through tomorrow. Later startup and cron runs request yesterday through
-tomorrow. Every page is stored as:
+months. After that, startup and scheduled incremental runs refresh the recent
+two-day window. Every page is stored as:
 
 ```text
 tcb:mof:<base_gs1> -> purchase_requirement JSON
 ```
 
-`MOF_SYNC_CRON` uses standard five-field cron syntax. The default `0 2 * * *`
-runs daily at 02:00 in `TZ` (UTC by default). Set `MOF_SYNC_ON_START=false` only
-when startup synchronization is managed elsewhere.
+`MOF_SYNC_CRON` uses standard five-field cron syntax. The default
+`0 */4 * * *` runs at minute zero every four hours in `TZ` (UTC by default).
+Set `MOF_SYNC_ON_START=false` only when startup synchronization is managed
+elsewhere.
 
 ## API
 
-The routes match the existing `8112-validation-node` Express server. TCB
-credentials come from environment variables, so callers do not send keys or
-tokens in request headers.
+TCB credentials come from environment variables, so callers do not send keys
+or tokens in request headers.
 
 ### Get the cached access token
 

@@ -41,7 +41,7 @@ test("initial sync stores every MOF page and records completion", async () => {
         config: {
             tcbEndpoint: "https://api.example.test",
             tcbAccessKey: "key",
-            mofSyncCron: "0 2 * * *",
+            mofSyncCron: "0 */4 * * *",
         },
     });
 
