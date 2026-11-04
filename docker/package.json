@@ -1,0 +1,21 @@
+{
+  "name": "tcb-basket-validator-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dockerized Express API for the TCB JavaScript basket validation SDK",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@thecouponbureau/basket-validator": "file:../js",
+    "express": "^4.21.2",
+    "node-cron": "^4.2.1",
+    "redis": "^5.9.0"
+  }
+}
