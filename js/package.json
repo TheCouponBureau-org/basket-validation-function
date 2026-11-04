@@ -1,0 +1,23 @@
+{
+  "name": "@thecouponbureau/basket-validator",
+  "version": "1.0.0",
+  "description": "TCB basket validation SDK for JavaScript",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "files": [
+    "basket_validation.js",
+    "core",
+    "index.js",
+    "lib",
+    "services",
+    "Readme.JavaScript.md",
+    "ReadmeWithLocalDatabase.JavaScript.md"
+  ],
+  "license": "UNLICENSED"
+}

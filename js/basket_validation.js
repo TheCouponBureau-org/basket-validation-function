@@ -1,4 +1,6 @@
-function validate_basket_helper(basket_validation_input, discount_calculation = false) {
+"use strict";
+
+function validate_basket_helper(basket_validation_input) {
     
     const { basket, coupons } = basket_validation_input;
     if(!basket || !coupons) {
@@ -8,29 +10,15 @@ function validate_basket_helper(basket_validation_input, discount_calculation = 
         };
     }
 
-    // Get individual coupons discount in cents
-    if ( !discount_calculation ) {
-        coupons.forEach(coupon => {
-            let validateCouponWithBasket = validate_basket_helper({basket, coupons: [coupon]}, true);
-            coupon.discount_in_cents = validateCouponWithBasket.discount_in_cents;
-        });
-    }
-
-    // Sort the coupons with discount in cents in desc order
-    coupons.sort((a, b) => b.discount_in_cents - a.discount_in_cents);
-
     const basket_validation_output = {
         discount_in_cents: 0,
         applied_coupons: []
     };
 
     let new_basket = mergeBasketItems(basket);
-    let not_all_coupons_consumed = false;
-    let index = 0;
 
     // for each coupon, check if basket meets requirements
     coupons.forEach(coupon => {
-        index++;
         if(!coupon.purchase_requirement) {
             console.error("Coupon does not have purchase requirement");
             return;
@@ -48,14 +36,12 @@ function validate_basket_helper(basket_validation_input, discount_calculation = 
             //in case discount_in_cents < 0, coupon is not applicable
             if(discount_in_cents <= 0)
                 return;
-            const old_basket_units = basket_units(new_basket);
             const reduced_basket = reduce_basket(new_basket, basket_items, {units_to_purchase, units_to_purchase2, units_to_purchase3});
             const consumed_basket = reduced_basket.consumed_basket;
             
             discount_in_cents = get_discount_in_cents(coupon, basket_items, has_only_primary_purchase, new_basket_total_price, consumed_basket);
             new_basket = reduced_basket.new_basket;
-            
-            const new_basket_units = basket_units(new_basket);
+
             basket_validation_output.applied_coupons.push({
                 coupon_code: coupon.gs1,
                 // description: coupon.description,
@@ -66,9 +52,6 @@ function validate_basket_helper(basket_validation_input, discount_calculation = 
             if(discount_in_cents)
                 basket_validation_output.discount_in_cents += discount_in_cents;
 
-            if(new_basket_units === 0 && index < coupons.length) {
-                not_all_coupons_consumed = true;
-            }
         }
     });
 
@@ -253,18 +236,9 @@ function allowed_basket_items_includes(allowed_basket_items, item, key_units_to_
 }
 
 function get_product_codes(basket_items) {
-    const product_codes = {};
-    basket_items.map(item => {
-        if(!item.product_type) {
-            product_codes.gtins = product_codes.gtins || [];
-            product_codes.gtins.push(item.product_code);
-        } else {
-            product_codes[item.product_type] = product_codes[item.product_type] || [];
-            product_codes[item.product_type].push(item.product_code);
-        }
-        return item.product_code;
-    });
-    return product_codes;
+    return {
+        gtins: [...new Set(basket_items.map((item) => item.product_code))],
+    };
 }
 
 function meets_requirements(basket, coupon) {
@@ -600,9 +574,13 @@ function allowed_basket(basket, {
 
 
 function transformString(input) {
-    let parts = input.split(":"); // Split by ":"
-    let key = parts[0]; // Extract X
-    let values = parts[2].split("-").map(String); // Split Z values by "-" and convert to numbers
+    const parts = input.split(":");
+    if (parts.length < 3 || !parts[0] || !parts[2]) {
+        return {};
+    }
+
+    const key = parts[0];
+    const values = parts[2].split(/[-_]/).map(String);
 
     return { [key]: values };
 }
@@ -628,12 +606,14 @@ function transform_prefixed_code(prefixed_code) {
         return prefixed_code;
     }
     const output = {};
-    for (const property in prefixed_code) {
+    for (const originalProperty in prefixed_code) {
+        let property = originalProperty;
         if ( property.indexOf(":") >= 0 ) {
             // In this format "PLU:mobispark.thecouponbureau.org:2001_2100" - convert to {PLU: [2001, 2100]}
-            property = transformString(property);
+            const transformed = transformString(property);
+            property = Object.keys(transformed)[0] || property;
         }
-        const code = prefixed_code[property];
+        const code = prefixed_code[originalProperty];
         if(code) {
             const range = code[0].split("_");
             output[property] = {
@@ -737,5 +717,6 @@ function basketValue(basket) {
 
     
 module.exports = {
-    validate_basket_helper
+    validate_basket_helper,
+    localBasketValidation: validate_basket_helper
 }
