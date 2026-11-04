@@ -48,6 +48,27 @@ public class RequirementService {
         Purchase secondPurchase = purchasesObj.secondPurchase;
         Purchase thirdPurchase = purchasesObj.thirdPurchase;
 
+        // A no-requirement direct-value coupon with no product selectors applies
+        // to the whole basket. Restrict this behavior to the exact coupon rule
+        // so existing requirement and product-matching flows remain unchanged.
+        if (Objects.equals(pr.primaryPurchaseRequirements, 0L)
+                && Objects.equals(pr.primaryPurchaseReqCode, 0)
+                && Objects.equals(pr.saveValueCode, 6)
+                && (appliesToWhichItem == null || appliesToWhichItem == 0)
+                && isEmpty(primaryPurchase.gtins)
+                && isEmpty(primaryPurchase.eans)
+                && isEmpty(primaryPurchase.prefixedCode)
+                && isEmpty(primaryPurchase.excludedGtins)
+                && isEmpty(primaryPurchase.excludedEans)
+                && isEmpty(primaryPurchase.excludedPrefixedCode)) {
+            primaryPurchase.gtins = new ArrayList<>();
+            for (BasketItem item : basket) {
+                if (item != null && item.productCode != null) {
+                    primaryPurchase.gtins.add(item.productCode);
+                }
+            }
+        }
+
         // =====================================================
         // CASE: No additional rules → only primary purchase
         // =====================================================
@@ -786,5 +807,13 @@ public class RequirementService {
         for (BasketItem item : basketItems) {
             item.purchaseGroup = purchaseGroup;
         }
+    }
+
+    private static boolean isEmpty(Map<?, ?> values) {
+        return values == null || values.isEmpty();
+    }
+
+    private static boolean isEmpty(List<?> values) {
+        return values == null || values.isEmpty();
     }
 }

@@ -229,6 +229,14 @@ public class DiscountService {
 			discountInCents = coupon.purchaseRequirement.primaryPurchaseSaveValue != null
 					? coupon.purchaseRequirement.primaryPurchaseSaveValue
 							: 0;
+
+			// For no-requirement direct-value coupons, never discount more than
+			// the full basket total. Keep existing code-6 behavior for all other
+			// purchase requirement combinations.
+			if (Objects.equals(coupon.purchaseRequirement.primaryPurchaseRequirements, 0L)
+					&& Objects.equals(coupon.purchaseRequirement.primaryPurchaseReqCode, 0)) {
+				discountInCents = Math.min(discountInCents, newBasketTotalPrice);
+			}
 		}
 
 		return discountInCents;

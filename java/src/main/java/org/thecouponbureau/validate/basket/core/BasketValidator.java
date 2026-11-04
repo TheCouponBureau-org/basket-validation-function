@@ -22,6 +22,7 @@ import org.thecouponbureau.validate.basket.model.basketValidationResults.InputCo
 import org.thecouponbureau.validate.basket.model.basketValidationResults.LocalBasketValidationInput;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.MeetsRequirementsResult;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ReduceBasketResult;
+import org.thecouponbureau.validate.basket.model.basketValidationResults.PurchaseRequirement;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.UnitsToPurchaseHolder;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationError;
 import org.thecouponbureau.validate.basket.model.basketValidationResults.ValidationResult;
@@ -263,12 +264,37 @@ public class BasketValidator {
         AppliedCoupon appliedCoupon = new AppliedCoupon();
         appliedCoupon.couponCode = coupon.gs1;
         appliedCoupon.faceValueInCents = discountInCents;
-        appliedCoupon.productCodes = BasketHelper.getProductCodes(consumedBasket);
+        appliedCoupon.productCodes = isUnrestrictedNoRequirementDirectValueCoupon(coupon)
+                ? BasketHelper.getProductCodes(currentBasket)
+                : BasketHelper.getProductCodes(consumedBasket);
 
         CouponApplicationResult result = new CouponApplicationResult();
         result.appliedCoupon = appliedCoupon;
         result.remainingBasket = reducedBasket.newBasket;
         return result;
+    }
+
+    private static boolean isUnrestrictedNoRequirementDirectValueCoupon(Coupon coupon) {
+        if (coupon == null || coupon.purchaseRequirement == null) {
+            return false;
+        }
+
+        PurchaseRequirement requirement = coupon.purchaseRequirement;
+        return Long.valueOf(0L).equals(requirement.primaryPurchaseRequirements)
+                && Integer.valueOf(0).equals(requirement.primaryPurchaseReqCode)
+                && Integer.valueOf(6).equals(requirement.saveValueCode)
+                && (requirement.appliesToWhichItem == null
+                        || Integer.valueOf(0).equals(requirement.appliesToWhichItem))
+                && isEmpty(requirement.primaryPurchaseGtins)
+                && isEmpty(requirement.primaryPurchaseEans)
+                && isEmpty(requirement.excludedPrimaryPurchaseGtins)
+                && isEmpty(requirement.excludedPrimaryPurchaseEans)
+                && requirement.primaryPurchasePrefixedCode == null
+                && requirement.excludedPrimaryPurchasePrefixedCode == null;
+    }
+
+    private static boolean isEmpty(List<?> values) {
+        return values == null || values.isEmpty();
     }
 
     private static long calculateBasketTotalInCents(List<BasketItem> basket) {
