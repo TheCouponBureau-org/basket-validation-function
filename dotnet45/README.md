@@ -24,6 +24,13 @@ dotnet45\bin\Release\net45\TcbBasketValidation.Client.dll
 
 Add the DLL as a reference to the .NET Framework 4.5 POS application.
 
+### Cloud build
+
+The `Build .NET Framework 4.5 DLL` GitHub Actions workflow builds and uploads
+the DLL whenever the .NET SDK source changes. It can also be started manually
+from the repository's **Actions** page. Published GitHub releases receive the
+DLL as a release asset automatically.
+
 ## Use
 
 ```csharp

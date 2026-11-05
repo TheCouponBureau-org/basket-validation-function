@@ -29,6 +29,16 @@ dotnet45\bin\Release\net45\TcbBasketValidation.Client.dll
 
 The basket rule engine and its managed dependencies are embedded in this DLL.
 
+### Build in GitHub Actions
+
+The repository includes `.github/workflows/build-dotnet45-dll.yml`. The workflow:
+
+1. Builds the DLL on a Windows GitHub-hosted runner.
+2. Uploads `TcbBasketValidation.Client.dll` as a workflow artifact.
+3. Attaches the DLL to a GitHub release when a release is published.
+
+Run it manually from **GitHub > Actions > Build .NET Framework 4.5 DLL > Run workflow**, or let it run automatically when relevant SDK files change.
+
 ## 2. Add the DLL to the POS project
 
 1. Copy `TcbBasketValidation.Client.dll` into the application's `lib` folder.
