@@ -6,6 +6,7 @@ function loadConfig(environment = process.env) {
         tcbEndpoint: environment.TCB_ENDPOINT || environment.TBC_ENDPOINT,
         tcbAccessKey: environment.TCB_ACCESS_KEY,
         tcbSecretKey: environment.TCB_SECRET_KEY,
+        serviceApiKey: environment.SERVICE_API_KEY,
         redisUrl: environment.REDIS_URL || "redis://redis:6379",
         mofSyncCron: environment.MOF_SYNC_CRON || "0 */4 * * *",
         mofSyncOnStart: parseBoolean(environment.MOF_SYNC_ON_START, true),

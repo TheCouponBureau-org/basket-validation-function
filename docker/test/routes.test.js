@@ -15,6 +15,7 @@ test("exposes the reference validation response contract", async (context) => {
         },
         couponService: { redeem: async () => ({}), rollback: async () => ({}) },
         tokenManager: { getAccessToken: async () => "token" },
+        serviceApiKey: "service-key",
     });
     const server = app.listen(0);
     context.after(() => server.close());
@@ -23,7 +24,7 @@ test("exposes the reference validation response contract", async (context) => {
 
     const response = await fetch(`http://127.0.0.1:${port}/coupons_valid_for_basket`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-api-key": "service-key" },
         body: JSON.stringify({
             basket: [],
             coupons: ["8112009988459000019133924009755364"],
@@ -46,6 +47,7 @@ test("returns a clean 400 response for malformed JSON", async (context) => {
         basketService: {},
         couponService: {},
         tokenManager: {},
+        serviceApiKey: "service-key",
     });
     const server = app.listen(0);
     context.after(() => server.close());
@@ -54,7 +56,7 @@ test("returns a clean 400 response for malformed JSON", async (context) => {
 
     const response = await fetch(`http://127.0.0.1:${port}/coupons_valid_for_basket`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-api-key": "service-key" },
         body: "{invalid",
     });
 
@@ -63,4 +65,47 @@ test("returns a clean 400 response for malformed JSON", async (context) => {
         status: "error",
         message: "Invalid JSON payload",
     });
+});
+
+test("rejects protected routes when the API key is missing or invalid", async (context) => {
+    const app = createApp({
+        basketService: {},
+        couponService: {},
+        tokenManager: { getAccessToken: async () => "token" },
+        serviceApiKey: "service-key",
+    });
+    const server = app.listen(0);
+    context.after(() => server.close());
+    await new Promise((resolve) => server.once("listening", resolve));
+    const { port } = server.address();
+
+    for (const headers of [{}, { "x-api-key": "wrong-key" }]) {
+        const response = await fetch(`http://127.0.0.1:${port}/get_access_token`, {
+            method: "POST",
+            headers,
+        });
+        assert.equal(response.status, 401);
+        assert.deepEqual(await response.json(), {
+            status: "error",
+            message: "Invalid or missing API key.",
+        });
+    }
+});
+
+test("keeps business routes open when SERVICE_API_KEY is unset", async (context) => {
+    const app = createApp({
+        basketService: {},
+        couponService: {},
+        tokenManager: { getAccessToken: async () => "token" },
+    });
+    const server = app.listen(0);
+    context.after(() => server.close());
+    await new Promise((resolve) => server.once("listening", resolve));
+    const { port } = server.address();
+
+    const response = await fetch(`http://127.0.0.1:${port}/get_access_token`, {
+        method: "POST",
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { token: "token" });
 });

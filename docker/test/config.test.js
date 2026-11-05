@@ -9,12 +9,14 @@ test("loads required TCB credentials and operational defaults", () => {
         TCB_ENDPOINT: "https://api.example.test",
         TCB_ACCESS_KEY: "key",
         TCB_SECRET_KEY: "secret",
+        SERVICE_API_KEY: "service-key",
     });
 
     assert.equal(config.port, 3000);
     assert.equal(config.redisUrl, "redis://redis:6379");
     assert.equal(config.mofSyncCron, "0 */4 * * *");
     assert.equal(config.tokenTtlSeconds, 82_800);
+    assert.equal(config.serviceApiKey, "service-key");
 });
 
 test("rejects missing TCB environment configuration", () => {

@@ -29,6 +29,7 @@ async function start() {
         basketService,
         couponService,
         tokenManager,
+        serviceApiKey: config.serviceApiKey,
         asyncHealthCheck: async (_request, response, next) => {
             try {
                 await redis.ping();

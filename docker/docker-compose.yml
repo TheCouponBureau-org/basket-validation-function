@@ -12,6 +12,7 @@ services:
       TCB_ENDPOINT: ${TCB_ENDPOINT:?Set TCB_ENDPOINT in docker/.env}
       TCB_ACCESS_KEY: ${TCB_ACCESS_KEY:?Set TCB_ACCESS_KEY in docker/.env}
       TCB_SECRET_KEY: ${TCB_SECRET_KEY:?Set TCB_SECRET_KEY in docker/.env}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
       REDIS_URL: redis://redis:6379
       MOF_SYNC_CRON: ${MOF_SYNC_CRON:-0 */4 * * *}
       MOF_SYNC_ON_START: ${MOF_SYNC_ON_START:-true}

@@ -21,7 +21,16 @@ From the repository root:
 cp docker/.env.example docker/.env
 ```
 
-Set `TCB_ENDPOINT`, `TCB_ACCESS_KEY`, and `TCB_SECRET_KEY` in `docker/.env`, then:
+Set `TCB_ENDPOINT`, `TCB_ACCESS_KEY`, and `TCB_SECRET_KEY` in `docker/.env`.
+To protect the API routes, also set a long random `SERVICE_API_KEY`:
+
+```bash
+openssl rand -hex 32
+```
+
+When `SERVICE_API_KEY` is blank or absent, the routes remain open. When it is
+set, every business request must include the same value in the `x-api-key`
+header. The `/` and `/healthz` endpoints always remain public. Then run:
 
 ```bash
 cd docker
@@ -55,7 +64,8 @@ or tokens in request headers.
 ### Get the cached access token
 
 ```bash
-curl -X POST http://localhost:3000/get_access_token
+curl -X POST http://localhost:3000/get_access_token \
+  -H 'x-api-key: YOUR_SERVICE_API_KEY'
 ```
 
 ```json
@@ -66,6 +76,7 @@ curl -X POST http://localhost:3000/get_access_token
 
 ```bash
 curl -X POST http://localhost:3000/coupons_valid_for_basket \
+  -H 'x-api-key: YOUR_SERVICE_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
     "basket": [
@@ -101,6 +112,7 @@ Call only after the retail transaction succeeds.
 
 ```bash
 curl -X POST http://localhost:3000/redeem_coupons \
+  -H 'x-api-key: YOUR_SERVICE_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
     "coupons": ["8112009988459000019133924009755364"]
@@ -111,6 +123,7 @@ curl -X POST http://localhost:3000/redeem_coupons \
 
 ```bash
 curl -X POST http://localhost:3000/rollback_coupons \
+  -H 'x-api-key: YOUR_SERVICE_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
     "coupons": ["8112009988459000019133924009755364"]
