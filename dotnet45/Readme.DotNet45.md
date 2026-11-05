@@ -34,8 +34,9 @@ The basket rule engine and its managed dependencies are embedded in this DLL.
 The repository includes `.github/workflows/build-dotnet45-dll.yml`. The workflow:
 
 1. Builds the DLL on a Windows GitHub-hosted runner.
-2. Uploads `TcbBasketValidation.Client.dll` as a workflow artifact.
-3. Attaches the DLL to a GitHub release when a release is published.
+2. Runs network-independent .NET Framework 4.5 smoke tests against the compiled DLL.
+3. Uploads `TcbBasketValidation.Client.dll` only after the tests pass.
+4. Attaches the DLL to a GitHub release when a release is published.
 
 Run it manually from **GitHub > Actions > Build .NET Framework 4.5 DLL > Run workflow**, or let it run automatically when relevant SDK files change.
 

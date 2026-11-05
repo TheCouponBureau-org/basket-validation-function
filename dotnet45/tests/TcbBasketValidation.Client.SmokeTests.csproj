@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net45</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>TcbBasketValidation.Client.SmokeTests</AssemblyName>
+    <RootNamespace>TheCouponBureau.BasketValidation.SmokeTests</RootNamespace>
+    <LangVersion>5</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="TcbBasketValidation.Client">
+      <HintPath>..\..\artifacts\TcbBasketValidation.Client.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net45"
+                      Version="1.0.3"
+                      PrivateAssets="all" />
+  </ItemGroup>
+</Project>

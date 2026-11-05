@@ -63,6 +63,18 @@ jobs:
           Copy-Item $dll.FullName "$artifactDirectory/TcbBasketValidation.Client.dll"
           Write-Host "Staged DLL from $($dll.FullName)"
 
+      - name: Build DLL smoke tests
+        shell: pwsh
+        run: >-
+          dotnet build
+          dotnet45/tests/TcbBasketValidation.Client.SmokeTests.csproj
+          --configuration Release
+
+      - name: Run DLL smoke tests
+        shell: pwsh
+        run: >-
+          & "dotnet45/tests/bin/Release/net45/TcbBasketValidation.Client.SmokeTests.exe"
+
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v7
         with:

@@ -29,7 +29,9 @@ Add the DLL as a reference to the .NET Framework 4.5 POS application.
 The `Build .NET Framework 4.5 DLL` GitHub Actions workflow builds and uploads
 the DLL whenever the .NET SDK source changes. It can also be started manually
 from the repository's **Actions** page. Published GitHub releases receive the
-DLL as a release asset automatically.
+DLL as a release asset automatically. Before upload, the workflow runs the
+native .NET Framework smoke tests against the compiled DLL and a local mock TCB
+server. No live TCB credentials are used by the tests.
 
 ## Use
 
