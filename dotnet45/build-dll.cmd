@@ -13,9 +13,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-npm ci
+call npm ci
 if errorlevel 1 exit /b 1
-npm run build-rules
+call npm run build-rules
 if errorlevel 1 exit /b 1
 
 dotnet build TcbBasketValidation.Client.csproj --configuration Release

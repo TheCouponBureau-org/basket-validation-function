@@ -42,7 +42,7 @@ jobs:
       - name: Build DLL
         working-directory: dotnet45
         shell: cmd
-        run: build-dll.cmd
+        run: call build-dll.cmd
 
       - name: Stage build output
         shell: pwsh
@@ -51,7 +51,8 @@ jobs:
             -Path "$env:GITHUB_WORKSPACE/dotnet45/bin/Release" `
             -Filter "TcbBasketValidation.Client.dll" `
             -File `
-            -Recurse | Select-Object -First 1
+            -Recurse `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
 
           if ($null -eq $dll) {
             throw "TcbBasketValidation.Client.dll was not found under dotnet45/bin/Release."
