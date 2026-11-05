@@ -25,17 +25,17 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: dotnet45/package-lock.json
 
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
 
@@ -44,19 +44,29 @@ jobs:
         shell: cmd
         run: build-dll.cmd
 
-      - name: Verify build output
+      - name: Stage build output
         shell: pwsh
         run: |
-          $dll = "dotnet45/bin/Release/net45/TcbBasketValidation.Client.dll"
-          if (-not (Test-Path $dll)) {
-            throw "Expected build output was not created: $dll"
+          $dll = Get-ChildItem `
+            -Path "$env:GITHUB_WORKSPACE/dotnet45/bin/Release" `
+            -Filter "TcbBasketValidation.Client.dll" `
+            -File `
+            -Recurse | Select-Object -First 1
+
+          if ($null -eq $dll) {
+            throw "TcbBasketValidation.Client.dll was not found under dotnet45/bin/Release."
           }
 
+          $artifactDirectory = "$env:GITHUB_WORKSPACE/artifacts"
+          New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
+          Copy-Item $dll.FullName "$artifactDirectory/TcbBasketValidation.Client.dll"
+          Write-Host "Staged DLL from $($dll.FullName)"
+
       - name: Upload DLL artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: TcbBasketValidation.Client-net45
-          path: dotnet45/bin/Release/net45/TcbBasketValidation.Client.dll
+          path: artifacts/TcbBasketValidation.Client.dll
           if-no-files-found: error
 
   publish-release:
@@ -69,7 +79,7 @@ jobs:
 
     steps:
       - name: Download DLL artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: TcbBasketValidation.Client-net45
           path: release-artifact
