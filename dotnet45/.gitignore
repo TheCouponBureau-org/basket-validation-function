@@ -1,0 +1,6 @@
+bin/
+obj/
+*.user
+*.suo
+Resources/basket_validation.es5.js
+node_modules/
