@@ -45,7 +45,7 @@ async function redeemChunk(baseUrl, accessKey, accessToken, gs1s, mode, retailer
     }
 
     const response = await postJson(
-        `${normalizeBaseUrl(baseUrl)}/retailer/redeem`,
+        `${normalizeBaseUrl(baseUrl)}/${mode}/redeem`,
         accessKey,
         accessToken,
         payload,

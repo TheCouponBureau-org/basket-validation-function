@@ -76,7 +76,7 @@ async function resolveScannedChunk(
     if (retailerEmailDomain) payload.retailer_email_domain = retailerEmailDomain;
 
     const response = await postJson(
-        `${normalizeBaseUrl(baseUrl)}/retailer/redeem`,
+        `${normalizeBaseUrl(baseUrl)}/${mode}/redeem`,
         accessKey,
         accessToken,
         payload,

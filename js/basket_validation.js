@@ -31,6 +31,8 @@ function validate_basket_helper(basket_validation_input) {
         // check if basket meets requirements
         let {status, basket_items, units_to_purchase, units_to_purchase2, units_to_purchase3} = meets_requirements(new_basket, coupon);
         if(status) {
+            if(!Array.isArray(basket_items) || basket_items.length === 0)
+                return;
             const has_only_primary_purchase = !units_to_purchase2 && !units_to_purchase3;
             let discount_in_cents = get_discount_in_cents(coupon, basket_items, has_only_primary_purchase, new_basket_total_price, []);
             //in case discount_in_cents < 0, coupon is not applicable
@@ -40,13 +42,18 @@ function validate_basket_helper(basket_validation_input) {
             const consumed_basket = reduced_basket.consumed_basket;
             
             discount_in_cents = get_discount_in_cents(coupon, basket_items, has_only_primary_purchase, new_basket_total_price, consumed_basket);
+            const product_codes = get_product_codes(
+                is_unrestricted_no_requirement_direct_value_coupon(coupon)
+                    ? new_basket
+                    : consumed_basket
+            );
             new_basket = reduced_basket.new_basket;
 
             basket_validation_output.applied_coupons.push({
                 coupon_code: coupon.gs1,
                 // description: coupon.description,
                 face_value_in_cents: discount_in_cents,
-                product_codes: get_product_codes(consumed_basket),
+                product_codes,
             });
 
             if(discount_in_cents)
@@ -139,6 +146,12 @@ function get_discount_in_cents(coupon, basket_items, has_only_primary_purchase, 
         });
     } else if(save_value_code === 6) {
         discount_in_cents = coupon.purchase_requirement.primary_purchase_save_value;
+        if(
+            coupon.purchase_requirement.primary_purchase_requirements === 0 &&
+            coupon.purchase_requirement.primary_purchase_req_code === 0
+        ) {
+            discount_in_cents = Math.min(discount_in_cents, new_basket_total_price);
+        }
     }
     return discount_in_cents;
 }
@@ -241,6 +254,31 @@ function get_product_codes(basket_items) {
     };
 }
 
+function is_unrestricted_no_requirement_direct_value_coupon(coupon) {
+    const requirement = coupon?.purchase_requirement;
+    if(!requirement) {
+        return false;
+    }
+
+    // Keep this exception narrow so ordinary product and quantity rules still
+    // flow through the existing purchase-requirement matching logic.
+    return requirement.primary_purchase_requirements === 0
+        && requirement.primary_purchase_req_code === 0
+        && requirement.save_value_code === 6
+        && (requirement.applies_to_which_item == null
+            || requirement.applies_to_which_item === 0)
+        && is_empty_list(requirement.primary_purchase_gtins)
+        && is_empty_list(requirement.primary_purchase_eans)
+        && is_empty_list(requirement.excluded_primary_purchase_gtins)
+        && is_empty_list(requirement.excluded_primary_purchase_eans)
+        && requirement.primary_purchase_prefixed_code == null
+        && requirement.excluded_primary_purchase_prefixed_code == null;
+}
+
+function is_empty_list(value) {
+    return value == null || (Array.isArray(value) && value.length === 0);
+}
+
 function meets_requirements(basket, coupon) {
     if(!coupon.purchase_requirement) {
         console.error("Coupon does not have purchase requirement");
@@ -249,6 +287,12 @@ function meets_requirements(basket, coupon) {
     const { save_value_code: save_value_code1, applies_to_which_item, additional_purchase_rules_code} = coupon.purchase_requirement;
     const {primary_purchase, second_purchase, third_purchase} = get_purchases(coupon.purchase_requirement);
     // const save_value_code = save_value_code1 || 0;
+
+    if(is_unrestricted_no_requirement_direct_value_coupon(coupon)) {
+        primary_purchase.gtins = basket
+            .filter(item => item && item.product_code)
+            .map(item => item.product_code);
+    }
 
     if(additional_purchase_rules_code === undefined || additional_purchase_rules_code === null) {
         let {status, basket_items, units_to_purchase} =  meets_purchase_requirements(coupon, basket, primary_purchase, true);

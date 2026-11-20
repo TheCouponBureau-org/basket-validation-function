@@ -1,24 +1,27 @@
 # JavaScript Integration
 
-Use the SDK to validate scanned coupons, calculate the basket discount, finalize
-redemption after checkout, and roll back coupons when a transaction is voided.
-Internet access to TCB is required. Node.js 18 or newer is required.
+Send the basket and scanned coupon codes to `validateBasketHelper(...)`; the
+SDK obtains coupon purchase requirements from TCB and calculates the discount
+inside your application. Internet access to TCB is required.
+
+For the optional local offer-store workflow, see
+[JavaScript with a local offer store](ReadmeWithLocalDatabase.JavaScript.md).
 
 ## 1. Add the SDK
 
-Create a package archive from this `js/` directory:
+Node.js 18 or newer is required. From the `js/` directory, create the package:
 
 ```bash
 npm pack
 ```
 
-Copy the generated `.tgz` file into your application and install it:
+Copy the generated archive into your application and install it:
 
 ```bash
 npm install ./lib/thecouponbureau-basket-validator-1.0.0.tgz
 ```
 
-Import the public functions:
+Import the SDK functions used during checkout:
 
 ```javascript
 const {
@@ -29,10 +32,11 @@ const {
 } = require("@thecouponbureau/basket-validator");
 ```
 
-## 2. Get an access token
+## 2. Validate a basket
 
-Keep the access key and secret key in secure application configuration. The
-token is valid for 24 hours; cache it securely and refresh it before expiry.
+The example uses the TCB test environment. Keep credentials in secure
+application configuration. Basket prices are per-unit currency amounts;
+discounts are returned in cents.
 
 ```javascript
 const baseUrl = "https://api.try.thecouponbureau.org";
@@ -42,15 +46,7 @@ const accessToken = await fetchAccessToken(
     accessKey,
     process.env.TCB_SECRET_KEY
 );
-```
 
-## 3. Validate the basket
-
-Pass each scanned value as a coupon string. The SDK validates the coupons with
-TCB, obtains their purchase requirements, preserves their input order, and
-calculates the applicable discount.
-
-```javascript
 const input = {
     basket: [
         {
@@ -59,16 +55,9 @@ const input = {
             quantity: 2,
             unit: "item",
         },
-        {
-            product_code: "037000934677",
-            price: 1.34,
-            quantity: 2,
-            unit: "item",
-        },
     ],
     coupons: [
-        "8112009988459000019133924009755364",
-        "8112209988459000350001",
+        { gs1: "8112009988459000019133924009755364" },
     ],
     tcb_base_url: baseUrl,
     tcb_access_key: accessKey,
@@ -78,13 +67,59 @@ const input = {
 
 const validation = await validateBasketHelper(input);
 console.log(JSON.stringify(validation, null, 2));
+
+const appliedGs1s = validation.applied_coupons.map(
+    (coupon) => coupon.coupon_code
+);
 ```
 
-Example response:
+Leave `purchase_requirement` and `validated` unset in the standard flow. The
+SDK validates the coupon with TCB and obtains the current purchase requirement.
+Fetch codes can also be supplied in `gs1`; no separate parsing call is needed.
+
+Coupon strings are also accepted for compatibility:
+
+```javascript
+coupons: ["8112009988459000019133924009755364"]
+```
+
+Validation does **not** finalize redemption. An empty `applied_coupons` array
+means no coupon discount should be applied. API and invalid-input failures are
+thrown and must be handled before applying a discount.
+
+Set `enable_logging: true` to print the redacted input, TCB preprocessing
+request and response, and resolved coupons as formatted JSON.
+
+### Sample input and output
+
+Input:
 
 ```json
 {
-  "discount_in_cents": 200,
+  "basket": [
+    {
+      "product_code": "037000930396",
+      "price": 1.29,
+      "quantity": 2,
+      "unit": "item"
+    }
+  ],
+  "coupons": [
+    { "gs1": "8112009988459000019133924009755364" }
+  ],
+  "tcb_base_url": "https://api.try.thecouponbureau.org",
+  "tcb_access_key": "YOUR_ACCESS_KEY",
+  "tcb_access_token": "YOUR_ACCESS_TOKEN",
+  "mode": "retailer"
+}
+```
+
+Assuming TCB accepts the coupon and returns an offer for $1 off qualifying
+items, the basket validation output is:
+
+```json
+{
+  "discount_in_cents": 100,
   "applied_coupons": [
     {
       "coupon_code": "8112009988459000019133924009755364",
@@ -92,34 +127,19 @@ Example response:
       "product_codes": {
         "gtins": ["037000930396"]
       }
-    },
-    {
-      "coupon_code": "8112209988459000359165266614604064",
-      "face_value_in_cents": 100,
-      "product_codes": {
-        "gtins": ["037000934677"]
-      }
     }
   ]
 }
 ```
 
-An empty `applied_coupons` array means no coupon discount should be applied.
-Validation does not finalize redemption.
+This is the validation output, not the final redemption response.
 
-Set `enable_logging: true` on the input to print the redacted validation input,
-TCB preprocessing request and response, and resolved coupons as pretty JSON.
+## 3. Complete checkout and redeem
 
-## 4. Apply the discount and redeem
-
-After the transaction succeeds, redeem only the coupon codes returned in
-`applied_coupons`:
+Apply `validation.discount_in_cents`. After the transaction succeeds, redeem
+only the coupon codes returned in `applied_coupons`:
 
 ```javascript
-const appliedGs1s = validation.applied_coupons.map(
-    (coupon) => coupon.coupon_code
-);
-
 if (appliedGs1s.length > 0) {
     const redemption = await redeemCoupons(
         baseUrl,
@@ -129,18 +149,20 @@ if (appliedGs1s.length > 0) {
         input.mode,
         input.retailer_email_domain
     );
+
     console.log(JSON.stringify(redemption, null, 2));
+    // Save the redemption response with the POS transaction.
 }
 ```
 
-The SDK sends at most 15 coupons per request, runs multiple requests in
-parallel, and generates one `client_txn_id` per request. Retries reuse the same
-ID for idempotency. Check `status`, `status_code`, and `newly_redeemed` before
-treating every coupon as redeemed.
+Check `status`, `status_code`, and `newly_redeemed` before treating every
+coupon as redeemed. The SDK sends at most 15 coupons per request, executes
+multiple requests concurrently, and generates one stable `client_txn_id` per
+request so retries remain idempotent.
 
-## 5. Roll back a voided transaction
+## 4. Roll back only when a redeemed transaction is voided
 
-Use the serialized GS1 values confirmed by the redemption response:
+Use the coupon codes confirmed in `newly_redeemed`, saved as `redeemedGs1s`:
 
 ```javascript
 const rollbackResponses = await rollbackCoupons(
@@ -150,21 +172,23 @@ const rollbackResponses = await rollbackCoupons(
     redeemedGs1s,
     input.mode
 );
+
 console.log(JSON.stringify(rollbackResponses, null, 2));
 ```
 
-Rollback requests run in parallel. Rollback is allowed within 60 minutes of
-redemption; do not call it for a successful transaction.
+Check every rollback response. Do not call rollback during successful checkout.
+Rollback is allowed within 60 minutes of coupon redemption.
 
 ## Retailer or accelerator mode
 
 Omit `mode`, leave it blank, or use `"retailer"` for retailer integration. For
-accelerator integration, use:
+accelerator integration, set these values before validation:
 
 ```javascript
 input.mode = "accelerator";
 input.retailer_email_domain = "retailer.example";
 ```
 
-Accelerator validation and redemption require `retailer_email_domain`.
-Rollback requires only the mode.
+Accelerator validation, fetch-code resolution, and final redemption use the
+accelerator route and require a nonblank `retailer_email_domain`. Pass the same
+mode and domain to `redeemCoupons(...)`. Rollback takes only the mode.

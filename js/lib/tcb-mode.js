@@ -23,7 +23,7 @@ function resolveRetailerEmailDomain(mode, retailerEmailDomain) {
         throw new TypeError("Accelerator redemption requires retailer_email_domain.");
     }
 
-    return retailerEmailDomain.trim();
+    return retailerEmailDomain;
 }
 
 module.exports = {

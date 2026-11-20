@@ -139,11 +139,11 @@ async function requestBucket({
 
     if (enableLogging) {
         console.log("[TcbCouponResolutionService] Redeem request:");
-        console.log(JSON.stringify({ url: `${normalizeBaseUrl(baseUrl)}/retailer/redeem`, ...payload }, null, 2));
+        console.log(JSON.stringify({ url: `${normalizeBaseUrl(baseUrl)}/${mode}/redeem`, ...payload }, null, 2));
     }
 
     const response = await postJson(
-        `${normalizeBaseUrl(baseUrl)}/retailer/redeem`,
+        `${normalizeBaseUrl(baseUrl)}/${mode}/redeem`,
         accessKey,
         accessToken,
         payload,

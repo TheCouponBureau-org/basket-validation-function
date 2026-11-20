@@ -2,7 +2,8 @@
 
 This workflow keeps TCB purchase requirements in Redis to reduce response size
 and latency. It is an optional optimization; the standard integration is in
-[Readme.JavaScript.md](Readme.JavaScript.md).
+[Readme.JavaScript.md](Readme.JavaScript.md). TCB access is still required for
+fetch-code expansion, coupon-status checks, final redemption, and rollback.
 
 ## 1. Install the SDK and Redis client
 
@@ -53,8 +54,9 @@ cache and refresh it before expiry.
 
 ## 3. Synchronize offer records into Redis
 
-Use `initial` for the first six-month load and `incremental` for regular updates
-from yesterday through tomorrow. Continue until `next_page_no` is `-1`.
+Use `initial` for the first six-month load through tomorrow and `incremental`
+for regular updates from yesterday through tomorrow. Continue until
+`next_page_no` is `-1`.
 
 ```javascript
 async function syncOffers(mode) {
@@ -74,7 +76,7 @@ async function syncOffers(mode) {
         );
         await Promise.all(writes);
         pageNo = page.next_page_no;
-    } while (pageNo && pageNo !== "-1");
+    } while (pageNo && String(pageNo) !== "-1");
 }
 
 await syncOffers("initial");
@@ -125,7 +127,9 @@ const coupons = await buildCouponsFromLocalStore(scannedGs1s);
 ## 5. Perform optional local eligibility checks
 
 `localBasketValidation` never calls TCB. Every coupon must contain a purchase
-requirement.
+requirement. Run the local check one coupon at a time so one coupon does not
+consume basket quantities needed to evaluate another coupon during this early
+eligibility pass.
 
 ```javascript
 const basket = [
@@ -133,15 +137,27 @@ const basket = [
     { product_code: "037000934677", price: 1.34, quantity: 2, unit: "item" },
 ];
 
-const localResult = localBasketValidation({ basket, coupons });
-const locallyApplicable = new Set(
-    localResult.applied_coupons.map((coupon) => coupon.coupon_code)
-);
-const eligibleCoupons = coupons.filter((coupon) => locallyApplicable.has(coupon.gs1));
+const eligibleCoupons = [];
+
+for (const coupon of coupons) {
+    const localResult = localBasketValidation({
+        basket,
+        coupons: [coupon],
+    });
+
+    if (localResult.discount_in_cents > 0) {
+        eligibleCoupons.push(coupon);
+    }
+}
 ```
 
 This early check can discard coupons that cannot apply to the current basket.
 It does not confirm TCB coupon status and does not redeem a coupon.
+
+The local rule engine also supports an unrestricted direct-value offer with
+`primary_purchase_requirements: 0`, `primary_purchase_req_code: 0`, and
+`save_value_code: 6`. Its discount is capped at the remaining basket value and
+its output lists the basket GTINs associated with that discount.
 
 ## 6. Confirm coupon status and calculate the final discount
 
@@ -163,6 +179,18 @@ const validation = await validateBasketHelper({
 console.log(JSON.stringify(validation, null, 2));
 ```
 
+The second pass performs these steps:
+
+1. Keep coupons already marked `validated: true`.
+2. Validate remaining coupons with TCB without requesting purchase requirements.
+3. Remove coupons absent from `newly_redeemed`.
+4. Preserve the caller's coupon order.
+5. Calculate the final discount using the surviving local purchase requirements.
+
+For accelerator mode, set `mode: "accelerator"` and provide
+`retailer_email_domain`. Use the same mode and domain for fetch-code resolution
+and final redemption. Rollback takes only the mode.
+
 ## 7. Complete checkout, redeem, or roll back
 
 After the transaction succeeds, redeem only applied coupons:
@@ -172,6 +200,8 @@ const appliedGs1s = validation.applied_coupons.map((item) => item.coupon_code);
 const redemption = appliedGs1s.length
     ? await redeemCoupons(baseUrl, accessKey, accessToken, appliedGs1s, "retailer")
     : null;
+
+console.log(JSON.stringify(redemption, null, 2));
 ```
 
 If the redeemed transaction is voided within 60 minutes:
@@ -184,6 +214,8 @@ const rollback = await rollbackCoupons(
     redeemedGs1s,
     "retailer"
 );
+
+console.log(JSON.stringify(rollback, null, 2));
 ```
 
 Store redemption responses with the transaction and reconcile partial failures

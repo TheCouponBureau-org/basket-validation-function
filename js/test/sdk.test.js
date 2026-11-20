@@ -25,6 +25,47 @@ test("local validation applies coupons in caller order", () => {
     assert.equal(output.discount_in_cents, 150);
 });
 
+test("unrestricted no-requirement direct-value coupon applies to the whole basket", () => {
+    const output = sdk.localBasketValidation({
+        basket: [
+            {
+                product_code: "037000930396",
+                price: 1.29,
+                quantity: 1,
+                unit: "item",
+            },
+            {
+                product_code: "037000934677",
+                price: 1.34,
+                quantity: 1,
+                unit: "item",
+            },
+        ],
+        coupons: [
+            {
+                gs1: "no-requirement-coupon",
+                purchase_requirement: {
+                    primary_purchase_save_value: 500,
+                    primary_purchase_requirements: 0,
+                    primary_purchase_req_code: 0,
+                    save_value_code: 6,
+                },
+            },
+        ],
+    });
+
+    assert.equal(output.discount_in_cents, 263);
+    assert.deepEqual(output.applied_coupons, [
+        {
+            coupon_code: "no-requirement-coupon",
+            face_value_in_cents: 263,
+            product_codes: {
+                gtins: ["037000930396", "037000934677"],
+            },
+        },
+    ]);
+});
+
 test("serialized GS1s parse locally while a fetch code is resolved through TCB", async () => {
     const serialized = "8112009988459000019133924009755364";
     const fetchCode = "8112001234567890";
@@ -143,6 +184,95 @@ test("final redemption chunks in parallel and reuses client transaction ID on re
     assert.equal(largeRequests.length, 2);
     assert.equal(largeRequests[0].client_txn_id, largeRequests[1].client_txn_id);
     assert.equal(response.total_gs1s_processed, 16);
+});
+
+test("accelerator mode routes validation, parsing, redemption, and rollback correctly", async () => {
+    const coupon = "8112009988459000019133924009755364";
+    const fetchCode = "8112001234567890";
+    const resolvedFetchCoupon = "8112109988459000269133321426026193";
+    const requests = [];
+
+    global.fetch = async (url, options) => {
+        const body = options.body ? JSON.parse(options.body) : null;
+        requests.push({ url, method: options.method, body });
+
+        if (options.method === "DELETE") {
+            return jsonResponse({ status: "success" });
+        }
+
+        assert.equal(body.retailer_email_domain, "retailer.example");
+        if (body.pre_process === "yes" && body.no_purchase_requirement === "yes") {
+            return jsonResponse({
+                status: "success",
+                newly_redeemed: [
+                    redeemed(resolvedFetchCoupon, "811210998845900026"),
+                ],
+            });
+        }
+        if (body.pre_process === "yes") {
+            return jsonResponse({
+                status: "success",
+                newly_redeemed: [redeemed(coupon, "811200998845900001")],
+                master_offer_files: {
+                    "811200998845900001": purchaseRequirement(100),
+                },
+            });
+        }
+        return jsonResponse({
+            status: "success",
+            status_code: "FULL_REDEMPTION",
+            newly_redeemed: [redeemed(coupon, "811200998845900001")],
+            total_gs1s_processed: 1,
+            master_offer_files: {},
+        });
+    };
+
+    const validation = await sdk.validateBasketHelper({
+        basket: [basketItem(1)],
+        coupons: [{ gs1: coupon }],
+        tcb_base_url: "https://api.example.test",
+        tcb_access_key: "key",
+        tcb_access_token: "token",
+        mode: "accelerator",
+        retailer_email_domain: "retailer.example",
+    });
+    assert.equal(validation.discount_in_cents, 100);
+
+    const resolved = await sdk.parseScannedGs1s(
+        "https://api.example.test",
+        "key",
+        "token",
+        [fetchCode],
+        "accelerator",
+        "retailer.example"
+    );
+    assert.equal(resolved[0].gs1, resolvedFetchCoupon);
+
+    await sdk.redeemCoupons(
+        "https://api.example.test",
+        "key",
+        "token",
+        [coupon],
+        "accelerator",
+        "retailer.example"
+    );
+    await sdk.rollbackCoupons(
+        "https://api.example.test",
+        "key",
+        "token",
+        [coupon],
+        "accelerator"
+    );
+
+    assert.deepEqual(
+        requests.map((request) => request.url),
+        [
+            "https://api.example.test/accelerator/redeem",
+            "https://api.example.test/accelerator/redeem",
+            "https://api.example.test/accelerator/redeem",
+            `https://api.example.test/accelerator/rollback/${coupon}`,
+        ]
+    );
 });
 
 test("MOF sync maps nextPageNo and SDK purchase requirement shape", async () => {
