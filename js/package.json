@@ -16,6 +16,7 @@
     "index.js",
     "lib",
     "services",
+    "README.md",
     "Readme.JavaScript.md",
     "ReadmeWithLocalDatabase.JavaScript.md"
   ],

@@ -49,17 +49,7 @@ function couponInputError(index, message) {
     return error;
 }
 
-function buildValidationError(code, message, details) {
-    return {
-        discount_in_cents: 0,
-        applied_coupons: [],
-        error: { code, message, details: details || null },
-    };
-}
-
 module.exports = {
-    buildValidationError,
-    couponInputError,
     isBlank,
     normalizeBaseUrl,
     normalizeCouponInput,

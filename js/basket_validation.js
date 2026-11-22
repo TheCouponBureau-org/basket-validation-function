@@ -284,9 +284,8 @@ function meets_requirements(basket, coupon) {
         console.error("Coupon does not have purchase requirement");
         return NEGATIVE_STATUS;
     }
-    const { save_value_code: save_value_code1, applies_to_which_item, additional_purchase_rules_code} = coupon.purchase_requirement;
+    const { applies_to_which_item, additional_purchase_rules_code} = coupon.purchase_requirement;
     const {primary_purchase, second_purchase, third_purchase} = get_purchases(coupon.purchase_requirement);
-    // const save_value_code = save_value_code1 || 0;
 
     if(is_unrestricted_no_requirement_direct_value_coupon(coupon)) {
         primary_purchase.gtins = basket

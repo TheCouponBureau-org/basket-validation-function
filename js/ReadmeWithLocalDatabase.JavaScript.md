@@ -19,7 +19,7 @@ npm install ./lib/thecouponbureau-basket-validator-1.0.0.tgz redis
 >
 > - macOS: `brew install redis && brew services start redis`
 > - Ubuntu/Debian: `sudo apt install redis-server && sudo systemctl enable --now redis-server`
-> - Windows: run Redis with Docker: `docker run -d --name tcb-redis -p 6379:6379 redis:7-alpine`
+> - Windows: install Redis in WSL and follow the Ubuntu/Debian commands above.
 
 ```javascript
 const { createClient } = require("redis");
