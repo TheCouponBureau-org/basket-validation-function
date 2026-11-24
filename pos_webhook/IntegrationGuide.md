@@ -21,9 +21,6 @@ The POS detects scanned values beginning with `8112`, sends only the basket and
 8112 coupon values to the retailer webhook, receives the applicable discount,
 and applies that discount at checkout. No customer PII is required.
 
-The webhook uses TCB APIs directly. It does not require Redis, a locally
-synchronized Master Offer File store, or another local offer database.
-
 ```mermaid
 flowchart LR
     Portal[TCB Portal<br/>Hosting selection and consent]
@@ -305,73 +302,5 @@ Response:
 
 Successfully rolled-back coupons must be excluded from future clearing files.
 
-## 7. Retailer and accelerator modes
-
-Retailer mode is the default. For accelerator processing, include these fields
-in validation and redemption requests:
-
-```json
-{
-  "mode": "accelerator",
-  "retailer_email_domain": "retailer.example"
-}
-```
-
-If `retailer_email_domain` is supplied and `mode` is omitted, the reference
-webhook selects accelerator mode. Rollback accepts `mode` but does not require
-`retailer_email_domain`.
-
-## 8. Cloud clearing-file process
-
-The webhook does not need a local offer database. It does require durable cloud
-storage for confirmed redemption and settlement records.
-
-The clearing process is:
-
-1. Record only coupons confirmed in TCB `newly_redeemed`.
-2. Store the coupon GS1, discount, redemption time, TCB execution ID, and
-   clearing status in the retailer cloud clearing ledger.
-3. Exclude failed, uncommitted, voided, or successfully rolled-back coupons.
-4. Generate the clearinghouse file on the retailer's required schedule.
-5. Encrypt and store the generated file in versioned cloud object storage.
-6. Deliver the file through the clearinghouse-approved secure channel.
-7. Record the clearinghouse acknowledgement or rejection for reconciliation.
-
-Clearing-file generation and delivery are part of the proposed hosted webhook
-service. They are not currently performed by the basket-validation SDK library
-alone.
-
-## 9. Security and availability
-
-- Use TLS for all POS-to-webhook and webhook-to-TCB communication.
-- Protect business routes with a retailer-controlled API key, signed token, or
-  mTLS identity.
-- Keep all service and clearinghouse credentials inside the selected hosting
-  environment's managed secret store.
-- Never send internal TCB authentication details to the POS.
-- Preserve the SDK-generated redemption `client_txn_id` across network retries.
-- Preserve the coupon order supplied by the POS.
-- Use bounded timeouts, retries, health checks, and multiple service instances.
-- Redact credentials and coupon payloads from general logs.
-- If validation fails or times out, return an explicit failure and do not apply
-  an unconfirmed manufacturer coupon discount.
-
-## 10. Recommended POS behavior
-
-1. Configure `enable_8112`, `8112_base_url`, `8112_api_key`, and
-   `universal_8112_coupon_order` for the retailer.
-2. Complete basket scanning and detect whether any scanned value begins with
-   `8112`.
-3. Skip the webhook when 8112 is disabled or no 8112 coupon was scanned.
-4. If the order is `FIRST`, send the completed basket and 8112 coupons to
-   `/coupons_valid_for_basket` before loyalty processing.
-5. Apply the returned 8112 discount, remove its returned GTINs from loyalty
-   eligibility, and then run loyalty against the remaining basket.
-6. If the order is `LAST`, run loyalty first, remove loyalty-discounted items,
-   and send the remaining basket and 8112 coupons to
-   `/coupons_valid_for_basket`.
-7. Apply the returned discount and complete payment.
-8. Call `/redeem_coupons` using only the applied 8112 coupon codes.
-9. Save the redemption response with the retailer transaction and clearing
-   ledger.
-10. Call `/rollback_coupons` only if the redeemed transaction is later voided.
+The Docker container generates the clearing file in the cloud and sends it to
+the clearinghouse. This process is handled automatically by the container.
