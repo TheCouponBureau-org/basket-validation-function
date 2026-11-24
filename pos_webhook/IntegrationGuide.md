@@ -1,13 +1,21 @@
-# Retailer-Hosted 8112 POS Webhook Integration Guide
+# 8112 POS Webhook Integration Guide
 
 ## 1. Proposed architecture
 
-The retailer hosts a lightweight 8112 webhook service in the retailer cloud.
-The TCB Portal makes the deployment package and required configuration
-available to the retailer. POS vendors such as ECRS and Toshiba configure one
-retailer-owned base URL and use the standard paths documented below. Every POS
-integrator calls the same API contract; only the retailer base URL and
-retailer-issued webhook credential change.
+TCB provides the 8112 webhook as Dockerized code. Every POS vendor integrates
+with the same API contract; only the configured service base URL and
+retailer-created API key change.
+
+The retailer chooses one of three hosting models:
+
+1. the POS vendor hosts the Dockerized webhook in the POS vendor cloud;
+2. the retailer hosts the Dockerized webhook in the retailer cloud; or
+3. the retailer uses a TCB-hosted version after the retailer grants consent in
+   the TCB Portal.
+
+The TCB Portal records the retailer's hosting selection, consent, and service
+configuration. TCB connectivity is configured inside the deployed service and
+is not exposed as part of the POS API.
 
 The POS detects scanned values beginning with `8112`, sends only the basket and
 8112 coupon values to the retailer webhook, receives the applicable discount,
@@ -18,14 +26,14 @@ synchronized Master Offer File store, or another local offer database.
 
 ```mermaid
 flowchart LR
-    Portal[TCB Portal<br/>Deployment and configuration]
-    POS[Retailer POS<br/>ECRS or Toshiba]
-    Webhook[Retailer Cloud<br/>8112 POS Webhook]
+    Portal[TCB Portal<br/>Hosting selection and consent]
+    POS[Any Retailer POS]
+    Webhook[8112 Webhook API<br/>POS vendor, retailer, or TCB hosted]
     TCB[TCB APIs]
     Files[Cloud Clearing Files]
     Clearinghouse[Clearinghouse]
 
-    Portal -->|Retailer provisions service| Webhook
+    Portal -->|Authorize and configure service| Webhook
     POS -->|Basket and 8112 coupons<br/>No PII| Webhook
     Webhook -->|Discount and applied coupons| POS
     Webhook <-->|Validate, redeem, rollback| TCB
@@ -37,62 +45,102 @@ flowchart LR
 
 | Participant | Responsibility |
 | --- | --- |
-| TCB Portal | Provides the webhook deployment package, TCB environment configuration, and retailer onboarding instructions. |
-| Retailer | Hosts, secures, scales, and monitors the webhook. Stores TCB and clearinghouse credentials in its cloud secret manager. |
-| POS integrator, including ECRS / Toshiba | Implements the common API contract once, detects `8112`, sends the basket and coupon values, applies the returned discount, and calls redemption after payment succeeds. |
-| Retailer webhook | Calls the SDK and TCB APIs, returns discounts, redeems or rolls back coupons, and writes confirmed redemptions for clearing. |
+| TCB | Provides the Dockerized webhook code and can provide the hosted service when authorized by the retailer. |
+| TCB Portal | Records retailer consent, hosting selection, service configuration, and retailer-created API key settings. |
+| Retailer | Selects the hosting model, creates the webhook API key, authorizes a TCB-hosted service when selected, and controls clearinghouse delivery. |
+| POS vendor | Implements the common API contract once for every POS and may host the Dockerized webhook when selected by the retailer. |
+| 8112 webhook | Calls the SDK and TCB APIs, returns discounts, redeems or rolls back coupons, and writes confirmed redemptions for clearing. |
 | Clearing process | Generates and securely delivers clearing files from confirmed redemption records. |
 
 ## 2. POS configuration
 
-The POS integrator implements one common API contract and configures one
-retailer-owned base URL for each retailer:
+The POS vendor implements one common API contract for every POS and configures
+the base URL selected by the retailer:
 
 ```text
 https://coupon-api.retailer.example
 ```
 
+The POS provides a retailer configuration placeholder with these settings:
+
+| Setting | Description |
+| --- | --- |
+| `enable_8112` | Enables or disables universal 8112 coupon processing. |
+| `8112_base_url` | Base URL of the POS-vendor-hosted, retailer-hosted, or TCB-hosted webhook. |
+| `8112_api_key` | Webhook API key created and controlled by the retailer. |
+| `universal_8112_coupon_order` | `FIRST` runs universal 8112 coupons before loyalty. `LAST` runs them after loyalty. |
+
+If `enable_8112` is false, or the completed scan contains no `8112` coupon,
+the POS does not call the webhook and continues its existing checkout flow.
+
 The webhook exposes the same endpoint paths as the reference POS API:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/get_access_token` | Returns the webhook's current TCB access token. This should normally be restricted to retailer operations and diagnostics. |
 | `POST` | `/coupons_valid_for_basket` | Validates the scanned coupons and returns the applicable discount. Does not perform final redemption. |
 | `POST` | `/redeem_coupons` | Performs final redemption after the retail transaction succeeds. |
 | `POST` | `/rollback_coupons` | Rolls back redeemed coupons when a completed transaction is voided within the allowed rollback window. |
 
-All business requests use `Content-Type: application/json`. When the retailer
-configures webhook authentication, the POS sends the retailer-issued key in:
+All requests use `Content-Type: application/json`. The hosted service exposes
+only these business endpoints to the POS. The POS sends the API key created by
+the retailer in:
 
 ```text
 x-api-key: RETAILER_WEBHOOK_API_KEY
 ```
 
-TCB access keys, secret keys, and access tokens remain inside the retailer
-cloud and are never sent to the POS or POS vendor.
+TCB connectivity and authentication remain internal to the Dockerized or
+TCB-hosted service and are never sent to the POS.
 
-## 3. Simple checkout flow
+## 3. Configurable checkout flow
 
 ```mermaid
-sequenceDiagram
-    participant POS as ECRS / Toshiba POS
-    participant API as Retailer 8112 Webhook
-    participant TCB as TCB
-    participant File as Cloud Clearing Process
-    participant CH as Clearinghouse
+flowchart TD
+    Basket[Basket scanning completed]
+    Enabled{8112 enabled and<br/>8112 coupon scanned?}
+    Existing[Continue existing checkout flow]
+    Order{Universal 8112 coupon order}
+    LoyaltyFirst[Run loyalty first]
+    RemoveLoyalty[Remove loyalty-discounted items]
+    UniversalFirst[Call 8112 webhook first]
+    Remove8112[Apply 8112 discount and<br/>remove 8112-discounted items]
+    Call8112[Call 8112 webhook with<br/>remaining basket and no PII]
+    RunLoyalty[Run loyalty on<br/>remaining basket]
+    Tender[Apply combined discounts<br/>and complete payment]
+    Redeem[Call /redeem_coupons]
+    Clearing[Record confirmed redemption<br/>for cloud clearing file]
 
-    POS->>API: POST /coupons_valid_for_basket<br/>basket + 8112 coupons
-    API->>TCB: Validate coupon and obtain purchase requirement
-    TCB-->>API: Valid coupons and offer data
-    API-->>POS: discount_in_cents + applied_coupons
-    POS->>POS: Apply discount and complete payment
-    POS->>API: POST /redeem_coupons
-    API->>TCB: Final redemption
-    TCB-->>API: newly_redeemed
-    API-->>POS: Redemption response
-    API->>File: Record confirmed redemptions
-    File->>CH: Send scheduled clearing file
+    Basket --> Enabled
+    Enabled -->|No| Existing
+    Enabled -->|Yes| Order
+    Order -->|LAST| LoyaltyFirst
+    LoyaltyFirst --> RemoveLoyalty
+    RemoveLoyalty --> Call8112
+    Call8112 --> Tender
+    Order -->|FIRST| UniversalFirst
+    UniversalFirst --> Remove8112
+    Remove8112 --> RunLoyalty
+    RunLoyalty --> Tender
+    Tender --> Redeem
+    Redeem --> Clearing
 ```
+
+### Promotion order and anti-stacking
+
+The retailer controls promotion order through
+`universal_8112_coupon_order`:
+
+- `LAST`: run loyalty first, apply its discounts, remove the products
+  discounted by loyalty, and send only the remaining basket plus scanned 8112
+  coupons to `/coupons_valid_for_basket`.
+- `FIRST`: call `/coupons_valid_for_basket` first, apply the returned 8112
+  discount, remove the products identified in
+  `applied_coupons[].product_codes.gtins`, and run loyalty against the remaining
+  basket.
+
+Items discounted by the first promotion engine must not be eligible for the
+second engine. This provides cross-engine anti-stacking while the 8112 SDK
+continues to handle anti-stacking between multiple 8112 coupons.
 
 If a redeemed transaction is voided, the POS calls `/rollback_coupons`. A
 validation request that is never followed by successful payment must not be
@@ -100,7 +148,13 @@ included in a clearing file.
 
 ## 4. Validate basket and coupons
 
-The POS calls this endpoint after detecting one or more `8112` coupon values:
+The POS calls this endpoint after basket scanning is complete, 8112 processing
+is enabled, and one or more `8112` coupon values were scanned. The basket sent
+to this endpoint depends on `universal_8112_coupon_order`:
+
+- `FIRST`: send the completed basket before loyalty discounts are applied.
+- `LAST`: run loyalty first, remove loyalty-discounted items, and send the
+  remaining basket.
 
 ```http
 POST /coupons_valid_for_basket
@@ -162,8 +216,10 @@ Response:
 ```
 
 The POS applies `basket_validation_output.discount_in_cents`. It saves the
-`coupon_code` values returned in `applied_coupons` for final redemption. An
-empty `applied_coupons` array means no 8112 discount should be applied.
+`coupon_code` values returned in `applied_coupons` for final redemption. When
+8112 runs first, the POS also removes the returned
+`applied_coupons[].product_codes.gtins` from loyalty eligibility. An empty
+`applied_coupons` array means no 8112 discount should be applied.
 
 This endpoint validates only. It must not create a clearing record or perform
 final coupon redemption.
@@ -249,31 +305,7 @@ Response:
 
 Successfully rolled-back coupons must be excluded from future clearing files.
 
-## 7. Access-token endpoint
-
-The webhook obtains and refreshes TCB tokens using credentials stored in the
-retailer cloud. POS validation, redemption, and rollback callers do not need
-the TCB token.
-
-The existing operational endpoint is:
-
-```http
-POST /get_access_token
-x-api-key: RETAILER_WEBHOOK_API_KEY
-```
-
-Response:
-
-```json
-{
-  "token": "YOUR_ACCESS_TOKEN"
-}
-```
-
-Restrict this endpoint to retailer operations where possible. Do not log or
-return the token in general POS transaction logs.
-
-## 8. Retailer and accelerator modes
+## 7. Retailer and accelerator modes
 
 Retailer mode is the default. For accelerator processing, include these fields
 in validation and redemption requests:
@@ -289,7 +321,7 @@ If `retailer_email_domain` is supplied and `mode` is omitted, the reference
 webhook selects accelerator mode. Rollback accepts `mode` but does not require
 `retailer_email_domain`.
 
-## 9. Cloud clearing-file process
+## 8. Cloud clearing-file process
 
 The webhook does not need a local offer database. It does require durable cloud
 storage for confirmed redemption and settlement records.
@@ -309,13 +341,14 @@ Clearing-file generation and delivery are part of the proposed hosted webhook
 service. They are not currently performed by the basket-validation SDK library
 alone.
 
-## 10. Security and availability
+## 9. Security and availability
 
 - Use TLS for all POS-to-webhook and webhook-to-TCB communication.
 - Protect business routes with a retailer-controlled API key, signed token, or
   mTLS identity.
-- Keep all TCB and clearinghouse credentials in the retailer secret manager.
-- Never send TCB credentials to the POS vendor or lane.
+- Keep all service and clearinghouse credentials inside the selected hosting
+  environment's managed secret store.
+- Never send internal TCB authentication details to the POS.
 - Preserve the SDK-generated redemption `client_txn_id` across network retries.
 - Preserve the coupon order supplied by the POS.
 - Use bounded timeouts, retries, health checks, and multiple service instances.
@@ -323,14 +356,22 @@ alone.
 - If validation fails or times out, return an explicit failure and do not apply
   an unconfirmed manufacturer coupon discount.
 
-## 11. Recommended POS behavior
+## 10. Recommended POS behavior
 
-1. Detect one or more scanned values beginning with `8112`.
-2. Build the basket and coupon request without consumer PII.
-3. Call `/coupons_valid_for_basket`.
-4. Apply the returned `discount_in_cents` and associate each applied coupon
-   with its returned GTINs.
-5. Complete payment.
-6. Call `/redeem_coupons` using only the applied coupon codes.
-7. Save the redemption response with the retailer transaction.
-8. Call `/rollback_coupons` only if the redeemed transaction is later voided.
+1. Configure `enable_8112`, `8112_base_url`, `8112_api_key`, and
+   `universal_8112_coupon_order` for the retailer.
+2. Complete basket scanning and detect whether any scanned value begins with
+   `8112`.
+3. Skip the webhook when 8112 is disabled or no 8112 coupon was scanned.
+4. If the order is `FIRST`, send the completed basket and 8112 coupons to
+   `/coupons_valid_for_basket` before loyalty processing.
+5. Apply the returned 8112 discount, remove its returned GTINs from loyalty
+   eligibility, and then run loyalty against the remaining basket.
+6. If the order is `LAST`, run loyalty first, remove loyalty-discounted items,
+   and send the remaining basket and 8112 coupons to
+   `/coupons_valid_for_basket`.
+7. Apply the returned discount and complete payment.
+8. Call `/redeem_coupons` using only the applied 8112 coupon codes.
+9. Save the redemption response with the retailer transaction and clearing
+   ledger.
+10. Call `/rollback_coupons` only if the redeemed transaction is later voided.
