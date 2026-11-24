@@ -22,20 +22,27 @@ The POS detects scanned values beginning with `8112`, sends only the basket and
 and applies that discount at checkout. No customer PII is required.
 
 ```mermaid
-flowchart LR
-    Portal[TCB Portal<br/>Hosting selection and consent]
-    POS[Any Retailer POS]
-    Webhook[8112 Webhook API<br/>POS vendor, retailer, or TCB hosted]
-    TCB[TCB APIs]
+flowchart TB
+    subgraph Services[ ]
+        direction LR
+        Portal[TCB Portal<br/>Hosting selection and consent]
+        Webhook[8112 Webhook API<br/>POS vendor, retailer, or TCB hosted]
+        POS[Any Retailer POS]
+        TCB[TCB APIs]
+
+        Portal -->|Authorize and configure service| Webhook
+        POS -->|Basket and 8112 coupons<br/>No PII| Webhook
+        Webhook -->|Discount and applied coupons| POS
+        Webhook <-->|Validate, redeem, rollback| TCB
+    end
+
     Files[Cloud Clearing Files]
     Clearinghouse[Clearinghouse]
 
-    Portal -->|Authorize and configure service| Webhook
-    POS -->|Basket and 8112 coupons<br/>No PII| Webhook
-    Webhook -->|Discount and applied coupons| POS
-    Webhook <-->|Validate, redeem, rollback| TCB
     Webhook -->|Confirmed redemptions| Files
     Files -->|Secure delivery| Clearinghouse
+
+    style Services fill:none,stroke:none
 ```
 
 ### Responsibility model
