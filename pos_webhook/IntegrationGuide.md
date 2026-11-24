@@ -1,8 +1,181 @@
-# SDK as Code Integration Guide
+# POS Webhook and SDK Integration Guide
 
 ![Integration Flow](flow.png)
 
 This guide is based on `Sdk as Code Integration Guide.odt` and aligned with the current Java SDK behavior in this repository.
+
+## Proposed Retailer-Hosted 8112 Architecture
+
+The recommended enterprise model is for each retailer to host the 8112 POS SDK
+as a service inside the retailer's cloud environment. The TCB Portal can make
+the signed deployment package and configuration available to the retailer.
+POS vendors such as ECRS or Toshiba then support one retailer-configurable 8112
+endpoint instead of embedding retailer-specific TCB credentials or offer data
+inside every POS lane.
+
+### High-level architecture
+
+```mermaid
+flowchart LR
+    Portal[TCB Portal<br/>Deployment package and configuration]
+    TCB[TCB APIs<br/>Token, coupon status, redemption, rollback]
+    CH[Retailer Clearinghouse]
+
+    subgraph Store[Retail Store]
+        Scanner[Scanner]
+        POS[ECRS / Toshiba POS]
+        Scanner -->|UPC and 8112 scans| POS
+    end
+
+    subgraph RetailerCloud[Retailer Cloud]
+        Endpoint[Retailer 8112 Endpoint<br/>Validate, commit, void]
+        SDK[POS SDK Service<br/>GS1 resolution and basket validation]
+        Offers[(Optional local MOF store)]
+        Ledger[(Redemption and clearing ledger)]
+        FileService[Clearing File Generator]
+        Storage[(Encrypted cloud storage)]
+
+        Endpoint --> SDK
+        SDK <--> Offers
+        SDK --> Ledger
+        Ledger --> FileService
+        FileService --> Storage
+    end
+
+    Portal -->|Retailer-controlled provisioning| Endpoint
+    POS -->|HTTPS: basket and 8112 coupons only| Endpoint
+    Endpoint -->|Discount and applied coupons| POS
+    SDK <--> TCB
+    Storage -->|Scheduled secure delivery| CH
+```
+
+### Responsibility model
+
+| Component | Responsibility |
+| --- | --- |
+| TCB Portal | Makes the SDK deployment package, environment configuration, and onboarding instructions available to the retailer. |
+| Retailer | Hosts, secures, monitors, and scales the 8112 endpoint in the retailer cloud. Owns TCB and clearinghouse credentials. |
+| ECRS / Toshiba POS | Detects an `8112` coupon, sends the basket and scanned 8112 values to the configured retailer endpoint, applies the returned discount, and confirms or voids the transaction. |
+| Retailer-hosted SDK service | Resolves coupons, validates coupon status, calculates discounts, performs final redemption or rollback, and records successful redemption events. |
+| Clearing file service | Builds clearing files only from successfully redeemed transactions, stores them durably, delivers them to the clearinghouse, and records acknowledgements or failures. |
+
+### One configurable retailer endpoint
+
+The POS should require only one configured URL, for example:
+
+```text
+https://coupon-api.retailer.example/8112
+```
+
+The same endpoint can accept an `operation` value so the POS integration remains
+simple while preserving the required transaction lifecycle:
+
+| Operation | When called | Result |
+| --- | --- | --- |
+| `validate` | After scanning the basket and 8112 coupons | Returns the discount, applied coupon list, and a retailer-generated `validation_id`. It does not finalize redemption. |
+| `commit` | After payment succeeds | Redeems the applied coupons with TCB and writes the confirmed redemption to the clearing ledger. |
+| `void` | When a committed transaction is cancelled within the allowed rollback window | Rolls back eligible redeemed coupons and updates the ledger. |
+
+This two-phase `validate` then `commit` flow is required. Generating a clearing
+record from the initial validation request could incorrectly clear coupons from
+an abandoned or failed transaction.
+
+### PII-free validation request
+
+The POS sends only transaction identifiers, basket data, and 8112 coupon data.
+Do not send customer name, email, phone number, loyalty profile, payment-card
+data, or other consumer PII.
+
+```json
+{
+  "operation": "validate",
+  "transaction_id": "STORE101-LANE04-20261123-000184",
+  "store_id": "STORE101",
+  "lane_id": "LANE04",
+  "basket": [
+    {
+      "product_code": "037000930396",
+      "price": 1.29,
+      "quantity": 2,
+      "unit": "item"
+    }
+  ],
+  "coupons": [
+    "8112009988459000019133924009755364"
+  ]
+}
+```
+
+Example response:
+
+```json
+{
+  "validation_id": "val_01JDB6N7Z8E2B5P3F4M6Q9R1ST",
+  "transaction_id": "STORE101-LANE04-20261123-000184",
+  "discount_in_cents": 100,
+  "applied_coupons": [
+    {
+      "coupon_code": "8112009988459000019133924009755364",
+      "face_value_in_cents": 100,
+      "product_codes": {
+        "gtins": ["037000930396"]
+      }
+    }
+  ]
+}
+```
+
+After payment succeeds, the POS confirms the transaction:
+
+```json
+{
+  "operation": "commit",
+  "validation_id": "val_01JDB6N7Z8E2B5P3F4M6Q9R1ST",
+  "transaction_id": "STORE101-LANE04-20261123-000184"
+}
+```
+
+The service must make `validate`, `commit`, and `void` idempotent by retailer,
+store, and transaction ID. A repeated request must return the existing result
+instead of applying, redeeming, or reversing the coupon twice.
+
+### Clearing-file flow
+
+1. A successful `commit` calls TCB final redemption.
+2. The service stores only coupons confirmed in TCB `newly_redeemed` as redeemed.
+3. The ledger records the retailer, store, transaction, coupon, discount,
+   redemption timestamp, TCB execution ID, and reconciliation status.
+4. A scheduled cloud job groups eligible ledger records into the clearinghouse
+   file format.
+5. The generated file is encrypted and written to versioned cloud storage.
+6. The file is delivered through the clearinghouse-approved secure channel.
+7. Clearinghouse acknowledgement or rejection is written back to the ledger;
+   rejected records remain available for controlled retry and reconciliation.
+
+### Security and operational requirements
+
+- Use TLS for every POS-to-retailer and retailer-to-TCB connection.
+- Authenticate the POS using retailer-controlled mTLS, signed tokens, or API
+  credentials; do not expose TCB credentials to POS lanes or POS vendors.
+- Keep access keys, secret keys, access tokens, and clearinghouse credentials in
+  the retailer's managed secret store.
+- Encrypt the redemption ledger and clearing files at rest.
+- Redact credentials and coupon payloads from general application logs; retain
+  transaction-safe audit identifiers for support and reconciliation.
+- Deploy the endpoint across multiple instances or availability zones and use
+  health checks, bounded timeouts, retries, and circuit breaking.
+- If validation cannot be completed, return an explicit failure and do not apply
+  an unconfirmed manufacturer coupon discount.
+- Preserve coupon input order in the validation response.
+
+### Current SDK versus proposed hosted layer
+
+The current SDK already provides token retrieval, GS1 resolution, basket
+validation, redemption, rollback, retries, batching, idempotent redemption IDs,
+and optional local MOF synchronization. The retailer-hosted HTTP endpoint,
+durable transaction ledger, cloud clearing-file generator, secure file delivery,
+and portal-driven deployment workflow are proposed surrounding services and are
+not created automatically by the SDK library itself.
 
 ## 1. Build the JAR
 
@@ -624,12 +797,20 @@ Response:
 
 ## 14. Clearing and settlement
 
-After successful redemption:
+In the proposed retailer-hosted model, clearing begins only after the POS sends
+`commit` and TCB confirms final redemption:
 
-- retailer can generate the industry-standard coupon redemption file
-- retailer can send that file to the clearinghouse
+- write only coupons confirmed in `newly_redeemed` to the durable clearing ledger
+- exclude validation-only, failed, voided, or rolled-back coupon records
+- generate the industry-standard coupon redemption file in the retailer cloud
+- encrypt and retain the file according to retailer policy
+- send the file through the clearinghouse-approved secure delivery channel
+- reconcile the clearinghouse acknowledgement against the source ledger records
 
-Because coupons were already authenticated, validated, and redeemed through TCB, the redemption file becomes the settlement record for manufacturer reimbursement.
+Because the coupons were authenticated, validated, and finally redeemed through
+TCB, the clearing file becomes the settlement record for manufacturer
+reimbursement. File generation and clearinghouse delivery belong to the proposed
+hosted service layer; they are not currently performed by the SDK library alone.
 
 ## 15. Retry behavior for TCB API calls
 
