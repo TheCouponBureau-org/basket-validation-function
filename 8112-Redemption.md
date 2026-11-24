@@ -1,79 +1,24 @@
 # 8112 Universal Coupon Redemption — High-Level Guide
 
-## 1. Purpose
+## 1. How to identify an 8112 Universal Coupon
 
-This document explains how a POS implementer identifies and processes an 8112
-Universal Coupon from scan through final redemption.
+The POS only needs one detection rule:
 
-For this integration, a scanned numeric value beginning with `8112` is routed
-to the 8112 coupon workflow. The POS should preserve the complete scanned value
-as a string and must not truncate, reformat, or attempt to interpret it as a
-UPC.
-
-The 8112 value may represent:
-
-- one serialized coupon;
-- multiple concatenated serialized coupons;
-- a 16-digit fetch code that resolves to one or more serialized coupons; or
-- a non-serialized coupon identifier that TCB resolves into a serialized
-  coupon.
-
-The SDK or hosted webhook handles the detailed parsing and resolution. The POS
-only needs to detect the `8112` prefix and submit the complete scanned value.
-
-## 2. High-level process
-
-```mermaid
-flowchart TD
-    Scan[Scan basket items and coupons]
-    Detect{Does a scanned coupon<br/>begin with 8112?}
-    Existing[Continue the existing POS flow]
-    Order{Universal 8112 order}
-    ValidateFirst[Validate 8112 coupons]
-    DiscountFirst[Apply returned 8112 discount]
-    Remove8112[Remove 8112-discounted items]
-    RunLoyalty[Run loyalty on remaining items]
-    LoyaltyFirst[Apply loyalty discounts]
-    RemoveLoyalty[Remove loyalty-discounted items]
-    ValidateLast[Validate 8112 coupons<br/>against remaining items]
-    DiscountLast[Apply returned 8112 discount]
-    Payment[Complete payment]
-    Redeem[Perform final coupon redemption]
-    Clearing[Docker service generates the cloud<br/>clearing file and sends it to the clearinghouse]
-    Rollback[Roll back redemption if the<br/>completed transaction is voided]
-
-    Scan --> Detect
-    Detect -->|No| Existing
-    Detect -->|Yes| Order
-    Order -->|FIRST| ValidateFirst
-    ValidateFirst --> DiscountFirst
-    DiscountFirst --> Remove8112
-    Remove8112 --> RunLoyalty
-    RunLoyalty --> Payment
-    Order -->|LAST| LoyaltyFirst
-    LoyaltyFirst --> RemoveLoyalty
-    RemoveLoyalty --> ValidateLast
-    ValidateLast --> DiscountLast
-    DiscountLast --> Payment
-    Payment --> Redeem
-    Redeem --> Clearing
-    Redeem -. Transaction voided .-> Rollback
+```text
+Anything scanned that starts with 8112 is an 8112 Universal Coupon.
 ```
 
-The retailer controls whether the Universal 8112 coupon is processed `FIRST`
-or `LAST` relative to loyalty. Items discounted by the first promotion engine
-must be removed from eligibility before the second promotion engine runs.
+Preserve the complete scanned value exactly as received. Do not truncate,
+reformat, split, or parse it in the POS.
 
-## 3. 8112 data-string types
+If no scanned value starts with `8112`, continue the existing checkout flow
+without calling the 8112 service.
 
-### 3.1 Standard serialized coupon
+## 2. Coupon code types
 
-A standard serialized consumer coupon:
+### Standard coupon code
 
-- begins with `8112`;
-- contains digits only;
-- contains the base GS1 plus a 16-digit serial component; and
-- has a variable total length determined by data encoded in the coupon.
+A standard 8112 coupon code represents one serialized coupon.
 
 Example:
 
@@ -81,59 +26,12 @@ Example:
 8112209988459000329165266614604064
 ```
 
-Resolved representation:
+The POS sends the complete value to the 8112 service without interpreting its
+length or internal structure.
 
-```json
-{
-  "gs1": "8112209988459000329165266614604064",
-  "base_gs1": "811220998845900032",
-  "validated": false
-}
-```
+### Fetch code
 
-The SDK parses this format locally. `validated: false` means it was parsed
-successfully but has not yet been validated against TCB for coupon status.
-
-The POS must not assume a fixed serialized-coupon length. For example, the SDK
-also supports this longer valid serialized value:
-
-```text
-8112069988556677440000019133301677522707
-```
-
-### 3.2 Concatenated serialized coupons
-
-One scan may contain multiple complete serialized coupons concatenated into a
-single numeric string. The SDK determines each coupon's length dynamically and
-returns every serialized coupon in the original order.
-
-Example containing two coupons:
-
-```text
-81122099884590003291652666146040648112209988459000349165768322093822
-```
-
-Result:
-
-```json
-[
-  {
-    "gs1": "8112209988459000329165266614604064",
-    "base_gs1": "811220998845900032",
-    "validated": false
-  },
-  {
-    "gs1": "8112209988459000349165768322093822",
-    "base_gs1": "811220998845900034",
-    "validated": false
-  }
-]
-```
-
-### 3.3 16-digit fetch code
-
-A 16-digit fetch code begins with `8112` but is not itself a serialized coupon.
-It is a reference that TCB expands into one or more serialized coupons.
+A fetch code is a shorter 8112 value that may represent one or more coupons.
 
 Example:
 
@@ -141,68 +39,40 @@ Example:
 8112209988459000
 ```
 
-Each 16-digit fetch code is sent to TCB in its own request. Multiple fetch-code
-requests may run in parallel. The SDK returns only coupons included in TCB's
-`newly_redeemed` response.
+The POS sends the fetch code exactly as scanned. The 8112 service calls TCB and
+resolves it into the applicable serialized coupons. The POS does not need to
+resolve the fetch code itself.
 
-One fetch code may resolve to multiple coupons:
+## 3. Checkout process
 
-```json
-[
-  {
-    "gs1": "8112209988459000329165266614604064",
-    "base_gs1": "811220998845900032",
-    "validated": true
-  },
-  {
-    "gs1": "8112209988459000349165768322093822",
-    "base_gs1": "811220998845900034",
-    "validated": true
-  }
-]
+```mermaid
+flowchart TD
+    Scan[Complete basket and coupon scanning]
+    Detect{Does any scanned value<br/>start with 8112?}
+    Existing[Continue existing checkout]
+    Validate[Send basket and 8112 values<br/>to the validation API]
+    Apply[Apply the returned discount]
+    Payment[Complete payment]
+    Redeem[Call the redemption API]
+    Clearing[Service creates the cloud clearing file<br/>and sends it to the clearinghouse]
+
+    Scan --> Detect
+    Detect -->|No| Existing
+    Detect -->|Yes| Validate
+    Validate --> Apply
+    Apply --> Payment
+    Payment --> Redeem
+    Redeem --> Clearing
 ```
 
-`validated: true` indicates that TCB returned the coupon in
-`newly_redeemed` during fetch-code resolution.
+The retailer may configure Universal 8112 coupons to run before or after the
+loyalty promotion engine. Products discounted by the first promotion engine
+must not be reused by the second promotion engine.
 
-### 3.4 Non-serialized coupon identifier
+## 4. Validate the basket
 
-Some scanned 8112 values are neither a locally parseable serialized coupon nor
-a 16-digit fetch code.
-
-Example:
-
-```text
-8112209988459000320001
-```
-
-The SDK sends these values to TCB for resolution. They are grouped into batches
-of up to 15 values, and independent batches run in parallel. A returned coupon
-is matched using the TCB `master_offer_file` and returned as its complete
-serialized GS1 plus `base_gs1`.
-
-## 4. How the POS recognizes an 8112 Universal Coupon
-
-The POS integration rule is intentionally simple:
-
-```text
-If the scanned coupon value starts with 8112, route it to the 8112 workflow.
-```
-
-The POS should not:
-
-- require a fixed length after detecting `8112`;
-- reject a 16-digit value because it is shorter than a serialized coupon;
-- split a long value into fixed-size segments;
-- calculate `base_gs1` itself; or
-- send customer PII with the basket.
-
-The SDK or webhook determines the exact data-string type and returns the
-resolved coupon information.
-
-## 5. Basket validation
-
-After scanning is complete, send the basket and all scanned 8112 values to:
+After scanning is complete, send the basket and all scanned values beginning
+with `8112` to:
 
 ```http
 POST /coupons_valid_for_basket
@@ -254,20 +124,20 @@ Example response:
 }
 ```
 
-The POS applies `discount_in_cents` and retains the returned `coupon_code`
-values for final redemption. When 8112 runs first, remove the returned GTINs
-from loyalty eligibility before running loyalty.
+Apply `discount_in_cents` and retain the returned `coupon_code` values for
+final redemption. The service handles coupon resolution and validation.
 
-## 6. Final redemption
+## 5. Redeem after payment
 
-Call final redemption only after payment succeeds, using only the coupon codes
-returned as applied during basket validation:
+After payment succeeds, send only the applied coupon codes to:
 
 ```http
 POST /redeem_coupons
 Content-Type: application/json
 x-api-key: RETAILER_WEBHOOK_API_KEY
 ```
+
+Example request:
 
 ```json
 {
@@ -277,14 +147,15 @@ x-api-key: RETAILER_WEBHOOK_API_KEY
 }
 ```
 
-Only coupons returned by TCB in `newly_redeemed` are treated as successfully
-redeemed. The Docker service records confirmed redemptions, generates the
-clearing file in the cloud, and sends it to the clearinghouse.
+The redemption API takes care of final TCB redemption. The POS does not need to
+parse the coupon, construct a TCB request, or manage TCB credentials.
 
-## 7. Rollback
+The service records confirmed redemptions, creates the clearing file in the
+cloud, and sends it to the clearinghouse.
 
-If a successfully redeemed retail transaction is later voided within the
-allowed rollback window, call:
+## 6. Roll back a voided transaction
+
+If a completed transaction is voided after redemption, call:
 
 ```http
 POST /rollback_coupons
@@ -300,17 +171,18 @@ x-api-key: RETAILER_WEBHOOK_API_KEY
 }
 ```
 
-Successfully rolled-back coupons are excluded from clearing.
+The service handles the rollback and excludes successfully rolled-back coupons
+from clearing.
 
-## 8. Implementation checklist
+## 7. POS implementation summary
 
-1. Add retailer settings to enable 8112, configure the webhook base URL and API
-   key, and select whether Universal 8112 runs `FIRST` or `LAST`.
-2. Preserve every scanned value beginning with `8112` exactly as scanned.
-3. Complete the basket before requesting coupon validation.
-4. Send only basket data and 8112 coupon values; do not send customer PII.
-5. Apply only the discount and coupons returned by validation.
-6. Prevent the second promotion engine from reusing items discounted by the
-   first promotion engine.
-7. Perform final redemption only after successful payment.
-8. Roll back redeemed coupons when the completed transaction is voided.
+1. Detect scanned values that start with `8112`.
+2. Preserve each complete value exactly as scanned.
+3. Send the completed basket and 8112 values to the validation API.
+4. Apply only the returned discount.
+5. Complete payment.
+6. Call the redemption API with the applied coupon codes.
+7. Call rollback only if the redeemed transaction is later voided.
+
+The POS is not responsible for parsing coupon data, resolving fetch codes, or
+performing TCB redemption logic.
